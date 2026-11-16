@@ -1,0 +1,28 @@
+name: Repository protection
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeowners:
+    name: Code-owner coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify default code owner at this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$TARGET_REPOSITORY/contents/.github/CODEOWNERS?ref=$TARGET_REVISION" \
+            --jq .content | base64 --decode > "$RUNNER_TEMP/codeowners"
+          test -s "$RUNNER_TEMP/codeowners"
+          grep -Eq '^\*[[:space:]]+@nikolareljin([[:space:]]|$)' "$RUNNER_TEMP/codeowners"
