@@ -41,10 +41,17 @@ jobs:
           TARGET_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
+          hooks_tree="$(gh api "repos/$TARGET_REPOSITORY/git/trees/$TARGET_REVISION" \
+            --jq '.tree[] | select(.path == ".githooks" and .type == "tree") | .sha')"
+          test -n "$hooks_tree"
+          gh api "repos/$TARGET_REPOSITORY/git/trees/$hooks_tree" \
+            --jq '[.tree[] | select(.path == "pre-commit" or .path == "pre-push") | .mode] | sort == ["100755", "100755"]' \
+            | grep -Fx true
           mkdir -p "$RUNNER_TEMP/hook-check/.githooks" "$RUNNER_TEMP/hook-check/tests" "$RUNNER_TEMP/hook-check/scripts"
           for file in .githooks/pre-commit .githooks/pre-push scripts/check_codeowners.py tests/test_codeowners.py tests/test_publication_hooks.py; do
             gh api "repos/$TARGET_REPOSITORY/contents/$file?ref=$TARGET_REVISION" \
               --jq .content | base64 --decode > "$RUNNER_TEMP/hook-check/$file"
           done
+          chmod +x "$RUNNER_TEMP/hook-check/.githooks/pre-commit" "$RUNNER_TEMP/hook-check/.githooks/pre-push"
       - name: Verify refusal and input forwarding
         run: python3 -m unittest discover -s "$RUNNER_TEMP/hook-check/tests"

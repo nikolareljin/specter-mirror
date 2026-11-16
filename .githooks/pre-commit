@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 gate="$(git config --get publication.gate || true)"
-if [[ -z "$gate" || ! -x "$gate" ]]; then
-  echo "Publication gate is missing or not executable; commit refused." >&2
+if [[ "$gate" != /* || ! -f "$gate" || ! -x "$gate" ]]; then
+  echo "Publication gate must be an absolute executable file; commit refused." >&2
   exit 1
 fi
 exec "$gate" staged
