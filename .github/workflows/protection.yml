@@ -26,3 +26,22 @@ jobs:
             --jq .content | base64 --decode > "$RUNNER_TEMP/codeowners"
           test -s "$RUNNER_TEMP/codeowners"
           grep -Eq '^\*[[:space:]]+@nikolareljin([[:space:]]|$)' "$RUNNER_TEMP/codeowners"
+  publication-hooks:
+    name: Publication hook contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read hook sources at this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hook-check/.githooks" "$RUNNER_TEMP/hook-check/tests"
+          for file in .githooks/pre-commit .githooks/pre-push tests/test_publication_hooks.py; do
+            gh api "repos/$TARGET_REPOSITORY/contents/$file?ref=$TARGET_REVISION" \
+              --jq .content | base64 --decode > "$RUNNER_TEMP/hook-check/$file"
+          done
+      - name: Verify refusal and input forwarding
+        run: python3 -m unittest discover -s "$RUNNER_TEMP/hook-check/tests"
