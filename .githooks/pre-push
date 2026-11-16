@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+gate="$(git config --get publication.gate || true)"
+if [[ "$gate" != /* || ! -f "$gate" || ! -x "$gate" ]]; then
+  echo "Publication gate must be an absolute executable file; push refused." >&2
+  exit 1
+fi
+exec "$gate" history "$@"

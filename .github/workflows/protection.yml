@@ -1,0 +1,57 @@
+name: Repository protection
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeowners:
+    name: Code-owner coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify default code owner at this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_REVISION: ${{ github.sha }}
+          TARGET_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$TARGET_REPOSITORY/contents/.github/CODEOWNERS?ref=$TARGET_REVISION" \
+            --jq .content | base64 --decode > "$RUNNER_TEMP/codeowners"
+          test -s "$RUNNER_TEMP/codeowners"
+          gh api "repos/$TARGET_REPOSITORY/contents/scripts/check_codeowners.py?ref=$TARGET_REVISION" \
+            --jq .content | base64 --decode > "$RUNNER_TEMP/check_codeowners.py"
+          python3 "$RUNNER_TEMP/check_codeowners.py" "$RUNNER_TEMP/codeowners" --owner "$TARGET_OWNER"
+  publication-hooks:
+    name: Publication hook contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read hook sources at this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          hooks_tree="$(gh api "repos/$TARGET_REPOSITORY/git/trees/$TARGET_REVISION" \
+            --jq '.tree[] | select(.path == ".githooks" and .type == "tree") | .sha')"
+          test -n "$hooks_tree"
+          gh api "repos/$TARGET_REPOSITORY/git/trees/$hooks_tree" \
+            --jq '[.tree[] | select(.path == "pre-commit" or .path == "pre-push") | .mode] | sort == ["100755", "100755"]' \
+            | grep -Fx true
+          mkdir -p "$RUNNER_TEMP/hook-check/.githooks" "$RUNNER_TEMP/hook-check/tests" "$RUNNER_TEMP/hook-check/scripts"
+          for file in .githooks/pre-commit .githooks/pre-push scripts/check_codeowners.py tests/test_codeowners.py tests/test_publication_hooks.py; do
+            gh api "repos/$TARGET_REPOSITORY/contents/$file?ref=$TARGET_REVISION" \
+              --jq .content | base64 --decode > "$RUNNER_TEMP/hook-check/$file"
+          done
+          chmod +x "$RUNNER_TEMP/hook-check/.githooks/pre-commit" "$RUNNER_TEMP/hook-check/.githooks/pre-push"
+      - name: Verify refusal and input forwarding
+        run: python3 -m unittest discover -s "$RUNNER_TEMP/hook-check/tests"
