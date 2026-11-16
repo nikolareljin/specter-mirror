@@ -1,0 +1,11 @@
+{
+  "name": "Documentation links and reminder",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "./dev docs-check"
+  }
+}

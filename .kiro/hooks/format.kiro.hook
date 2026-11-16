@@ -1,0 +1,11 @@
+{
+  "name": "Rust format check",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "./dev fmt-check"
+  }
+}

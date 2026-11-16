@@ -1,0 +1,20 @@
+name: Bug report
+description: Report a reproducible application failure.
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps and source revision
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: OS, CPU flags, camera format and resolution
+      description: Share reviewed compatibility facts only. Keep raw diagnostics local.

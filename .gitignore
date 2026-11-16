@@ -4,3 +4,8 @@ __pycache__/
 /scans/
 /scan-results/
 /security-reports/
+/target/
+/web/node_modules/
+/web/dist/
+/hardware-local.txt
+/web/.preview/

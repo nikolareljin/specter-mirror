@@ -1,0 +1,11 @@
+{
+  "name": "Dependency inventory",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "./dev deps-check"
+  }
+}

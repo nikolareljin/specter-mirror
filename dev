@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+usage='usage: ./dev [check|test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|docs-check|native-proof]'
+[[ $# -le 1 ]] || { echo "$usage" >&2; exit 2; }
+compiler="$(rustup which --toolchain 1.99.1 rustc)"
+toolchain_bin="$(dirname "$compiler")"
+export RUSTC="$compiler"
+export PATH="$toolchain_bin:$PATH"
+case "${1:-check}" in
+  check)
+    cargo fmt --all -- --check
+    cargo clippy --locked --workspace --all-targets -- -D warnings
+    cargo test --locked --workspace
+    cargo check --locked -p spook-core -p spook-web --target wasm32-unknown-unknown
+    cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
+  test) cargo test --locked --workspace ;;
+  build) cargo build --locked --workspace ;;
+  build-i686) cargo build --locked -p spook-kiosk --release --target i686-unknown-linux-gnu ;;
+  fmt) cargo fmt --all ;;
+  fmt-check) cargo fmt --all -- --check ;;
+  core-test) cargo test --locked -p spook-core ;;
+  wasm-check) cargo check --locked -p spook-core -p spook-web --target wasm32-unknown-unknown ;;
+  i686-check) cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
+  deps-check) cargo tree --locked --workspace --duplicates ;;
+  docs-check) python3 scripts/check_docs.py ;;
+  native-proof) cargo run --locked -p spook-kiosk -- --self-test ;;
+  *) echo "$usage" >&2; exit 2 ;;
+esac

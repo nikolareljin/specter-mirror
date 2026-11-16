@@ -1,0 +1,11 @@
+{
+  "name": "i686 compatibility",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "./dev i686-check"
+  }
+}

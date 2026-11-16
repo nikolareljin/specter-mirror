@@ -1,0 +1,11 @@
+{
+  "name": "WASM compatibility",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "./dev wasm-check"
+  }
+}
