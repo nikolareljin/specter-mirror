@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# SCRIPT: check
+# DESCRIPTION: Run the Rust foundation checks through the pinned development wrapper.
+# USAGE: ./check [-h|--help]
+# PARAMETERS:
+#   No arguments  Run formatting, clippy, workspace tests, WASM and i686 checks.
+#   -h, --help    Print this header without running checks.
+# REQUIREMENTS:
+#   See ./dev --help for Rust, target and native compilation prerequisites.
+#   Frontend checks are separate: npm --prefix web run build.
+# EXAMPLES:
+#   ./check --help
+#   ./check
+#   npm --prefix web ci
+#   npm --prefix web run build
+# EXIT_CODES:
+#   0  Help printed or all checks succeeded.
+#   2  Unsupported arguments.
+#   Other nonzero values are propagated from ./dev check.
+
+set -euo pipefail
+show_help() {
+  sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+}
+if [[ $# -eq 1 && ( "$1" == -h || "$1" == --help ) ]]; then
+  show_help
+  exit 0
+fi
+if [[ $# -ne 0 ]]; then
+  echo "Unsupported arguments. See ./check --help for usage." >&2
+  exit 2
+fi
+exec "$(dirname "$0")/dev" check

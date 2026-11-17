@@ -93,6 +93,10 @@ class PublicationHookTests(unittest.TestCase):
             self.hook("pre-push", "upstream", "target", data="ref-input\n").returncode, 0,
         )
 
+    def test_help_named_remote_does_not_bypass_the_gate(self):
+        self.gate("exit 7")
+        self.assertEqual(self.hook("pre-push", "--help", "target").returncode, 7)
+
 
 if __name__ == "__main__":
     unittest.main()
