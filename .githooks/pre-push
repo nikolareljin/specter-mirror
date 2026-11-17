@@ -1,5 +1,28 @@
 #!/usr/bin/env bash
+# SCRIPT: pre-push
+# DESCRIPTION: Refuse pushes unless the local gate inspects outgoing history successfully.
+# USAGE: .githooks/pre-push <remote> <url> OR .githooks/pre-push [-h|--help]
+# PARAMETERS:
+#   remote, url   Git supplies these arguments; they are forwarded unchanged.
+#   Standard input  Git push-ref lines are forwarded unchanged to the gate.
+#   -h, --help    With no other arguments, print this header without publishing.
+# REQUIREMENTS:
+#   Git and an absolute executable file configured as publication.gate.
+#   Normally Git invokes this callback through the shared hook installer.
+# EXAMPLES:
+#   .githooks/pre-push --help
+#   git config publication.gate /absolute/path/to/publication-check
+#   git push origin feature-branch
+# EXIT_CODES:
+#   0  Help printed or the publication gate succeeded.
+#   1  The publication gate is missing or invalid.
+#   Other nonzero values are propagated from the gate.
+
 set -euo pipefail
+if [[ $# -eq 1 && ( "$1" == -h || "$1" == --help ) ]]; then
+  sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+  exit 0
+fi
 gate="$(git config --get publication.gate || true)"
 if [[ "$gate" != /* || ! -f "$gate" || ! -x "$gate" ]]; then
   echo "Publication gate must be an absolute executable file; push refused." >&2

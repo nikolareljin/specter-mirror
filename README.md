@@ -16,6 +16,7 @@ Camera capture, haunted effects, interaction detection and browser WASM
 bindings are not implemented yet. Artwork is illustrative, not camera output.
 
 ```bash
+./dev --help
 rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy --target i686-unknown-linux-gnu,wasm32-unknown-unknown
 ./dev test
 ./dev native-proof

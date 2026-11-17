@@ -1,8 +1,55 @@
 #!/usr/bin/env bash
+# SCRIPT: dev
+# DESCRIPTION: Run SpecterMirror development checks with the pinned Rust toolchain.
+# USAGE: ./dev [command]
+# PARAMETERS:
+#   check         Format, clippy, workspace tests, WASM and i686 checks (default).
+#   test          Run all Rust workspace tests.
+#   build         Build the workspace for the host architecture.
+#   build-i686    Link the release kiosk executable for i686 Linux.
+#   fmt           Format all workspace Rust source files. This modifies files.
+#   fmt-check     Check Rust formatting without modifying source files.
+#   core-test     Run only spook-core tests.
+#   wasm-check    Check the portable crates for wasm32-unknown-unknown.
+#   i686-check    Check the complete workspace for i686-unknown-linux-gnu.
+#   deps-check    List duplicate packages in the locked dependency graph.
+#   docs-check    Check documentation links and print a review reminder.
+#   native-proof  Render a synthetic frame in an X11 window, then exit.
+#   -h, --help    Print this header without checking or building anything.
+# REQUIREMENTS:
+#   Rust commands need rustup and the toolchain in rust-toolchain.toml.
+#   i686 native commands also need gcc-multilib and libc6-dev-i386 on Ubuntu.
+#   native-proof needs X11; use xvfb-run for a virtual display.
+#   docs-check needs Python 3. Help needs only Bash and sed.
+# EXAMPLES:
+#   ./dev --help
+#   ./dev core-test
+#   ./dev wasm-check
+#   ./dev build-i686
+#   xvfb-run -a ./dev native-proof
+# EXIT_CODES:
+#   0  Help printed or the requested command succeeded.
+#   2  Unknown command or too many arguments.
+#   Other nonzero values are propagated from the selected tool.
+
 set -euo pipefail
+show_help() {
+  sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+}
+if [[ $# -eq 1 && ( "$1" == -h || "$1" == --help ) ]]; then
+  show_help
+  exit 0
+fi
+if [[ $# -gt 1 ]]; then
+  echo "Too many arguments. See ./dev --help for usage." >&2
+  exit 2
+fi
+case "${1:-check}" in
+  check|test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|native-proof) ;;
+  docs-check) exec python3 "$(dirname "${BASH_SOURCE[0]}")/scripts/check_docs.py" ;;
+  *) echo "Unknown command. See ./dev --help for usage." >&2; exit 2 ;;
+esac
 cd "$(dirname "$0")"
-usage='usage: ./dev [check|test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|docs-check|native-proof]'
-[[ $# -le 1 ]] || { echo "$usage" >&2; exit 2; }
 compiler="$(rustup which --toolchain 1.99.1 rustc)"
 toolchain_bin="$(dirname "$compiler")"
 export RUSTC="$compiler"
@@ -23,7 +70,5 @@ case "${1:-check}" in
   wasm-check) cargo check --locked -p spook-core -p spook-web --target wasm32-unknown-unknown ;;
   i686-check) cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
   deps-check) cargo tree --locked --workspace --duplicates ;;
-  docs-check) python3 scripts/check_docs.py ;;
   native-proof) cargo run --locked -p spook-kiosk -- --self-test ;;
-  *) echo "$usage" >&2; exit 2 ;;
 esac
