@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SHELL_SCRIPTS = (
     "dev", "check", "scripts/discover_hardware.sh",
     ".githooks/pre-commit", ".githooks/pre-push",
-)
+) + tuple(str(path.relative_to(ROOT)) for folder in ("scripts/appliance", "vm")
+          for path in sorted((ROOT / folder).glob("*.sh")))
 
 
 class ScriptHelpTests(unittest.TestCase):
@@ -41,14 +42,15 @@ class ScriptHelpTests(unittest.TestCase):
                     self.assertEqual(result.stderr, "")
 
     def test_unknown_user_script_options_fail_before_running_checks(self):
-        for script in ("dev", "check", "scripts/discover_hardware.sh"):
+        (Path(self.temp.name) / "python3").symlink_to(shutil.which("python3"))
+        for script in (path for path in SHELL_SCRIPTS if not path.startswith(".githooks/")):
             with self.subTest(script=script):
                 result = self.invoke(script, "--unknown-option")
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("usage", result.stderr.lower())
 
     def test_help_rejects_trailing_arguments(self):
-        for script in ("dev", "check", "scripts/discover_hardware.sh"):
+        for script in (path for path in SHELL_SCRIPTS if not path.startswith(".githooks/")):
             with self.subTest(script=script):
                 self.assertEqual(self.invoke(script, "--help", "extra").returncode, 2)
 
