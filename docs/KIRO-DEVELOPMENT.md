@@ -1,8 +1,13 @@
 # Kiro development
 
-This revision supplies the frame contract, synthetic rendering proof, Kiro
-steering and seven implementation specs. No completed Kiro implementation
-session or hook execution is recorded yet.
+The first task in `01-core-engine` was executed in a Kiro session and reviewed:
+RGB24 grayscale conversion, Sobel L1 edges and image-pipeline tests. Both
+functions use caller-owned buffers and preserve output on invalid input.
+The frame contract and existing mirror behavior are unchanged.
+
+Verification: core tests, formatting, clippy, WASM and i686 compilation.
+Review added mixed-gradient and short-output mutation checks. No hook execution
+or physical hardware performance is recorded for this task.
 
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
