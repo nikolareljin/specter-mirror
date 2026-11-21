@@ -1,0 +1,11 @@
+P2
+# Input ramp: pixel at index i is (i * 16) % 256 for i in 0..32.
+# Expected output, derived by hand from thresholds 16 * matrix + 8.
+# Row thresholds repeat per 4 columns: r0 8 136 40 168, r1 200 72 232 104,
+# r2 56 184 24 152, r3 248 120 216 88.
+8 4
+255
+0 0 0 0 255 0 255 0
+0 255 0 255 0 255 0 255
+0 0 255 0 255 0 255 0
+0 255 0 255 0 255 255 255
