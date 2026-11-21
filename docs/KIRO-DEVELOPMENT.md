@@ -9,6 +9,11 @@ Verification: core tests, formatting, clippy, WASM and i686 compilation.
 Review added mixed-gradient and short-output mutation checks. No hook execution
 or physical hardware performance is recorded for this task.
 
+The second task in `01-core-engine` was executed in a Kiro session and reviewed:
+4 x 4 Bayer dithering, a golden-output fixture and buffer-reuse tests. Review
+converted the fixture to one plain PGM image so standard readers can open it.
+Core tests, formatting, clippy, WASM and i686 checks cover this task.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's
