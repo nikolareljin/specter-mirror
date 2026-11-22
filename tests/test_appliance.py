@@ -122,6 +122,13 @@ class ApplianceTests(unittest.TestCase):
             app.install(self.args)
         self.assertEqual(before, self.snapshot())
 
+    def test_inline_startup_markers_do_not_remove_operator_commands(self):
+        self.startup.write_text('echo "' + app.BEGIN + '"; echo keep; echo "' + app.END + '"\n')
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "Malformed"):
+            app.install(self.args)
+        self.assertEqual(before, self.snapshot())
+
     def test_failed_startup_write_restores_previous_application(self):
         app.install(self.args)
         before = self.snapshot()

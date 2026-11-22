@@ -203,6 +203,8 @@ def startup_text(original, enable):
     if original.count(BEGIN) != original.count(END) or original.count(BEGIN) > 1:
         raise ValueError("Malformed managed startup block; repair it before provisioning")
     if BEGIN in original:
+        if any(marker not in original.splitlines() for marker in (BEGIN, END)):
+            raise ValueError("Malformed managed startup block; markers must occupy whole lines")
         start, finish = original.index(BEGIN), original.index(END)
         if finish < start:
             raise ValueError("Malformed managed startup block")
