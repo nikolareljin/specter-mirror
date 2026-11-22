@@ -33,4 +33,3 @@ if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
   exit 2
 fi
 exec python3 "$(dirname "${BASH_SOURCE[0]}")/run.py" --maintenance "$@"
-
