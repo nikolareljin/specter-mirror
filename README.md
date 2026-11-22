@@ -30,12 +30,23 @@ Ubuntu native builds need `build-essential`, `pkg-config` and `libx11-dev`.
 Full i686 checks also need `gcc-multilib` and `libc6-dev-i386`.
 The X11 proof needs a display; use `xvfb-run -a ./dev native-proof` in CI.
 
+## Try locally
+
+Run `./demo native` to keep the synthetic Rust image open until Escape.
+Run `./demo web` to preview the interface at
+http://127.0.0.1:5173/specter-mirror/. Use `./demo web --port 5179` if the
+default port is occupied. Install web dependencies with `npm ci --prefix web`.
+
+`./demo vm` forwards the verified ISO and guest options to the
+[QEMU runner](vm/README.md). It creates a disposable virtual disk and does not
+provision the development workstation. Run `./demo --help` for complete examples.
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) and [effects](docs/EFFECTS.md).
 - [i686 build](docs/BUILD_I686.md), [antiX installation](docs/INSTALL_ANTIX.md), [hardware](docs/HARDWARE.md).
 - [WASM build](docs/BUILD_WASM.md), [web interface](docs/WEB_DEMO.md), [privacy](docs/PRIVACY.md).
-- [VirtualBox](docs/VIRTUALBOX.md), [benchmarks](docs/BENCHMARKS.md), [demo verification](docs/DEMO.md).
+- [Virtual machines](vm/README.md), [ISO media](docs/ISO.md), [benchmarks](docs/BENCHMARKS.md), [demo verification](docs/DEMO.md).
 - [Kiro development](docs/KIRO-DEVELOPMENT.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md).
 - [Asset provenance](assets/PROVENANCE.md).
 - [Reused components and licenses](docs/DEPENDENCIES.md).

@@ -9,3 +9,13 @@ __pycache__/
 /web/dist/
 /hardware-local.txt
 /web/.preview/
+/dist/
+/vm/local/
+*.iso
+*.vdi
+*.vmdk
+*.vbox
+*.vbox-prev
+*.ova
+*.ovf
+*.qcow2

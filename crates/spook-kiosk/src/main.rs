@@ -1,6 +1,20 @@
-use minifb::{Key, Window, WindowOptions};
+use minifb::{InputCallback, Key, Window, WindowOptions};
 use spook_core::{copy_mirrored_rgb24, RgbFrame};
+use std::cell::Cell;
 use std::error::Error;
+use std::rc::Rc;
+
+struct ExitKeys(Rc<Cell<bool>>);
+
+impl InputCallback for ExitKeys {
+    fn add_char(&mut self, _character: u32) {}
+
+    fn set_key_state(&mut self, key: Key, down: bool) {
+        if key == Key::Escape && down {
+            self.0.set(true);
+        }
+    }
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut arguments = std::env::args_os().skip(1);
@@ -29,10 +43,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         "SpecterMirror - synthetic frame proof",
         width,
         height,
-        WindowOptions::default(),
+        WindowOptions {
+            resize: true,
+            scale_mode: minifb::ScaleMode::AspectRatioStretch,
+            ..WindowOptions::default()
+        },
     )?;
+    let exit_requested = Rc::new(Cell::new(false));
+    window.set_input_callback(Box::new(ExitKeys(Rc::clone(&exit_requested))));
     window.set_target_fps(30);
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+    while window.is_open() && !exit_requested.get() {
         window.update_with_buffer(&output, width, height)?;
         if proof {
             println!("Rendered a synthetic frame through the X11 software window.");
@@ -40,4 +60,22 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_press_is_retained_after_release() {
+        let requested = Rc::new(Cell::new(false));
+        let mut keys = ExitKeys(Rc::clone(&requested));
+        keys.set_key_state(Key::A, true);
+        keys.set_key_state(Key::A, false);
+        keys.add_char(u32::from(b'a'));
+        assert!(!requested.get());
+        keys.set_key_state(Key::Escape, true);
+        keys.set_key_state(Key::Escape, false);
+        assert!(requested.get());
+    }
 }

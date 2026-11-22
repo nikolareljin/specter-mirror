@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# SCRIPT: demo
+# DESCRIPTION: Open the native display, web interface or disposable appliance VM.
+# USAGE: ./demo [native|web|vm] [options]
+# PARAMETERS:
+#   native             Open the synthetic Rust image until Escape (default).
+#   web                Preview the web interface on localhost. Ctrl+C stops it.
+#   web --port PORT    Use a fixed port from 1 to 65535; default is 5173.
+#   vm [OPTIONS]       Forward options to the QEMU/KVM validation runner.
+#   --iso PATH         VM installation media; its trusted checksum is required.
+#   --iso-sha256 HEX   Trusted SHA-256 of the complete VM ISO.
+#   --directory PATH   New VM directory, or an existing one with --resume.
+#   --resume           Boot an existing guest disk without recreating it.
+#   --headless         Run the VM with a local monitor instead of a GUI.
+#   --memory MB        VM RAM from 512 to 4096 MB; default is 1024.
+#   --accel NAME       VM acceleration: auto (default), kvm or tcg.
+#   --network NAME     VM networking: none (default) or user.
+#   -h, --help         Read this header without starting tools or installing files.
+# REQUIREMENTS:
+#   Native: graphical X11 session, pinned Rust toolchain and X11 build libraries.
+#   Web: Node.js 22.12+ and npm; install dependencies with npm ci --prefix web.
+#   VM: qemu-img, qemu-system-i386, verified ISO and space for a virtual disk.
+#   VM paths are resolved from the directory where you run this command.
+#   Native mode shows synthetic pixels; web mode previews the interface.
+#   This helper never installs the appliance on the development workstation.
+# EXAMPLES:
+#   ./demo --help
+#   ./demo native
+#   ./demo web
+#   ./demo web --port 5179
+#   ./demo vm --iso /tmp/mirror.iso --iso-sha256 HEX --directory /tmp/mirror-test
+#   ./demo vm --iso /tmp/mirror.iso --iso-sha256 HEX --directory /tmp/mirror-test --resume
+# EXIT_CODES:
+#   0  Help printed or the selected mode exited successfully.
+#   1  A required display or dependency is unavailable.
+#   2  Unknown mode, invalid port or unsupported arguments.
+#   Other nonzero values are propagated from the selected tool.
+
+set -euo pipefail
+show_help() {
+  sed -n '2,/^$/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+}
+usage_error() {
+  echo "$1 See ./demo --help for usage." >&2
+  exit 2
+}
+if [[ $# -eq 1 && ( "$1" == -h || "$1" == --help ) ]]; then
+  show_help
+  exit 0
+fi
+mirror_mode="${1:-native}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+case "$mirror_mode" in
+  native|web|vm) ;;
+  *) usage_error "Unknown mode." ;;
+esac
+if [[ $# -eq 1 && ( "$1" == -h || "$1" == --help ) ]]; then
+  show_help
+  exit 0
+fi
+mirror_port=5173
+case "$mirror_mode" in
+  native)
+    [[ $# -eq 0 ]] || usage_error "Native mode takes no options."
+    ;;
+  web)
+    if [[ $# -eq 2 && "$1" == --port ]]; then
+      [[ "$2" =~ ^[0-9]{1,5}$ ]] || usage_error "Invalid web port."
+      mirror_port=$((10#$2))
+      (( mirror_port >= 1 && mirror_port <= 65535 )) || usage_error "Invalid web port."
+    elif [[ $# -ne 0 ]]; then
+      usage_error "Use web or web --port PORT."
+    fi
+    ;;
+  vm)
+    [[ $# -gt 0 ]] || usage_error "Provide the ISO, checksum and VM directory."
+    ;;
+esac
+if [[ "$mirror_mode" == vm ]]; then
+  exec "$(dirname -- "${BASH_SOURCE[0]}")/vm/qemu.sh" "$@"
+fi
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+case "$mirror_mode" in
+  native)
+    if [[ -z "${DISPLAY:-}" ]]; then
+      echo "Native mode needs an X11 DISPLAY. Run it from a graphical desktop." >&2
+      exit 1
+    fi
+    if ! command -v rustup >/dev/null 2>&1; then
+      echo "Native mode needs rustup and the pinned Rust toolchain. See README.md." >&2
+      exit 1
+    fi
+    exec ./dev native
+    ;;
+  web)
+    if ! command -v npm >/dev/null 2>&1; then
+      echo "Web mode needs Node.js and npm." >&2
+      exit 1
+    fi
+    if [[ ! -x web/node_modules/.bin/vite ]]; then
+      echo "Install web dependencies first: npm ci --prefix web" >&2
+      exit 1
+    fi
+    echo "Web interface: http://127.0.0.1:${mirror_port}/specter-mirror/"
+    echo "Press Ctrl+C to stop the preview."
+    exec npm --prefix web run dev -- --port "$mirror_port" --strictPort
+    ;;
+esac

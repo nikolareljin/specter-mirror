@@ -1,15 +1,13 @@
 # VirtualBox
 
-Use a clean 32-bit antiX guest with X11. No VM appliance or OVA has been
-validated yet. The shared installer will be the single provisioning entry
-point for both VM and physical targets; no development toolchain is required
-in the eventual target image.
+QEMU/KVM is the primary validation path. The [VM guide](../vm/README.md) provides disposable guest creation, shared
+provisioning wrappers, verification steps, USB camera guidance and OVA export
+requirements. The [installer](INSTALL_ANTIX.md) currently supports an opt-in
+synthetic frame proof. VirtualBox remains a separate compatibility check;
+no OVA is distributed.
 
-Sample mode must be the default reliable VM test, without a webcam. USB
-passthrough is optional and depends on host/guest/device support. A built-in
-host webcam is not automatically a guest V4L2 device.
-
-Repeat installation, reboot into sample mode, test maintenance and uninstall,
-and verify offline bundles with networking disabled. Export an OVA only after
-removing credentials, account data and machine-specific secrets and checking
-redistribution licenses. Never commit VM images to Git.
+Automated tests stage files without privilege and exercise idempotency,
+checksum failures, symbolic-link refusal, rollback, maintenance and bounded
+restarts. The ISO test preserves an El Torito boot image and checks the bundle
+payload in generated media. These tests do not establish guest boot, physical
+compatibility, live camera functionality or measured performance.

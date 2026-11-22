@@ -51,7 +51,14 @@ jobs:
       concurrency_key: specter-contracts
       python_version: '3.12'
       cache: false
-      lint_command: bash -n dev check scripts/discover_hardware.sh
+      install_command: |
+        sudo apt-get update
+        sudo apt-get install -y xorriso shellcheck
+      lint_command: |
+        for script in dev check demo scripts/discover_hardware.sh scripts/appliance/*.sh vm/*.sh; do
+          bash -n "$script"
+        done
+        shellcheck dev check demo scripts/discover_hardware.sh scripts/appliance/*.sh vm/*.sh
       test_command: python3 -m unittest discover -s tests -p 'test_*.py'
       extra_command: python3 scripts/check_docs.py
       timeout_minutes: 5
