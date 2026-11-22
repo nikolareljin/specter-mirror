@@ -44,6 +44,18 @@ class QemuTests(unittest.TestCase):
                 self.invoke(temporary)
             self.assertEqual(result.exception.code, 2)
 
+    def test_demo_resolves_vm_paths_from_the_callers_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "untrusted media.iso").write_bytes(b"fixture")
+            result = subprocess.run([
+                "bash", str(ROOT / "demo"), "vm", "--iso", "untrusted media.iso",
+                "--iso-sha256", "0" * 64, "--directory", "new guest",
+            ], cwd=directory, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("checksum", result.stderr)
+            self.assertFalse((directory / "new guest").exists())
+
     def test_resume_never_recreates_the_disk(self):
         with tempfile.TemporaryDirectory() as temporary:
             guest = Path(temporary) / "guest"

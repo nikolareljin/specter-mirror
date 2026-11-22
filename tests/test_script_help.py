@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SHELL_SCRIPTS = (
-    "dev", "check", "scripts/discover_hardware.sh",
+    "dev", "check", "demo", "scripts/discover_hardware.sh",
     ".githooks/pre-commit", ".githooks/pre-push",
 ) + tuple(str(path.relative_to(ROOT)) for folder in ("scripts/appliance", "vm")
           for path in sorted((ROOT / folder).glob("*.sh")))

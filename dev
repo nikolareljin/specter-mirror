@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SCRIPT: dev
-# DESCRIPTION: Run SpecterMirror development checks with the pinned Rust toolchain.
+# DESCRIPTION: Run SpecterMirror development commands with the pinned Rust toolchain.
 # USAGE: ./dev [command]
 # PARAMETERS:
 #   check         Format, clippy, workspace tests, WASM and i686 checks (default).
@@ -15,11 +15,12 @@
 #   deps-check    List duplicate packages in the locked dependency graph.
 #   docs-check    Check documentation links and print a review reminder.
 #   native-proof  Render a synthetic frame in an X11 window, then exit.
+#   native        Keep the synthetic frame window open until Escape.
 #   -h, --help    Print this header without checking or building anything.
 # REQUIREMENTS:
 #   Rust commands need rustup and the toolchain in rust-toolchain.toml.
 #   i686 native commands also need gcc-multilib and libc6-dev-i386 on Ubuntu.
-#   native-proof needs X11; use xvfb-run for a virtual display.
+#   native and native-proof need X11; use xvfb-run for a virtual display.
 #   docs-check needs Python 3. Help needs only Bash and sed.
 # EXAMPLES:
 #   ./dev --help
@@ -45,7 +46,7 @@ if [[ $# -gt 1 ]]; then
   exit 2
 fi
 case "${1:-check}" in
-  check|test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|native-proof) ;;
+  check|test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|native-proof|native) ;;
   docs-check) exec python3 "$(dirname "${BASH_SOURCE[0]}")/scripts/check_docs.py" ;;
   *) echo "Unknown command. See ./dev --help for usage." >&2; exit 2 ;;
 esac
@@ -85,4 +86,5 @@ case "${1:-check}" in
   i686-check) cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
   deps-check) cargo tree --locked --workspace --duplicates ;;
   native-proof) cargo run --locked -p spook-kiosk -- --self-test ;;
+  native) cargo run --locked -p spook-kiosk ;;
 esac
