@@ -115,6 +115,13 @@ class ApplianceTests(unittest.TestCase):
             app.install(self.args)
         self.assertEqual(before, self.snapshot())
 
+    def test_reversed_startup_markers_are_refused_before_writes(self):
+        self.startup.write_text(app.END + app.BEGIN)
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "Malformed"):
+            app.install(self.args)
+        self.assertEqual(before, self.snapshot())
+
     def test_failed_startup_write_restores_previous_application(self):
         app.install(self.args)
         before = self.snapshot()

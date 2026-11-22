@@ -8,5 +8,6 @@
   </keyboard>
   <applications>
     <application class="*"><decor>no</decor></application>
+    <application title="SpecterMirror - synthetic frame proof"><fullscreen>yes</fullscreen></application>
   </applications>
 </openbox_config>

@@ -9,7 +9,7 @@
 #   --user NAME     Existing non-root antiX desktop account.
 #   --profile NAME  auto (default), nb205, d630, virtualbox or generic.
 #   --allow-proof   Required opt-in for the synthetic frame application.
-#   --offline       Never install packages or access package repositories.
+#   --offline       Install bundled packages only; never access repositories.
 #   --install-deps  Install runtime packages through apt (requires networking).
 #   --root PATH     Stage into an absolute fixture root; skip runtime checks.
 #   --session NAME  kiosk (default) or desktop. Kiosk bypasses desktop startup.

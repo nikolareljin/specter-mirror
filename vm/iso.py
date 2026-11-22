@@ -51,8 +51,10 @@ def build(args):
         modifications = []
         root_provenance = None
         if args.appliance:
-            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@-]*", args.builder_image):
-                raise ValueError("Invalid builder image reference")
+            builder_id = subprocess.check_output(
+                ["docker", "image", "inspect", "--format", "{{.Id}}", args.builder_image], text=True).strip()
+            if not re.fullmatch(r"sha256:[a-f0-9]{64}", builder_id):
+                raise ValueError("Builder image must resolve to an immutable local image ID")
             if not (args.bundle / "packages").is_dir():
                 raise ValueError("Appliance ISO requires a bundle containing offline runtime packages")
             base_root = work / "base-linuxfs"
@@ -68,7 +70,7 @@ def build(args):
                             "--mount", f"type=bind,src={base_root},dst=/base/linuxfs,readonly",
                             "--mount", f"type=bind,src={toolkit},dst=/toolkit,readonly",
                             "--mount", f"type=bind,src={root_work},dst=/work",
-                            args.builder_image, "python3", "/toolkit/remaster_root.py",
+                            builder_id, "python3", "/toolkit/remaster_root.py",
                             "--sha256", args.bundle_sha256], check=True)
             new_root = root_work / "linuxfs.new"
             # The antiX installer requires this integrity file; SHA-256 pins establish trust.
@@ -78,8 +80,7 @@ def build(args):
             modifications = ["-map", str(new_root), "/antiX/linuxfs",
                              "-map", str(legacy_manifest), "/antiX/linuxfs.md5"]
             root_provenance = json.loads((root_work / "root-provenance.json").read_text())
-            root_provenance["builder_image_id"] = subprocess.check_output(
-                ["docker", "image", "inspect", "--format", "{{.Id}}", args.builder_image], text=True).strip()
+            root_provenance["builder_image_id"] = builder_id
         (toolkit / "PROVENANCE.json").write_text(json.dumps({
             "base_sha256": args.base_sha256.lower(),
             "bundle_manifest_sha256": args.bundle_sha256.lower(),

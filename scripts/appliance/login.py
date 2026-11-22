@@ -26,8 +26,11 @@ def main():
         os.execv("/usr/local/bin/desktop-session", ["desktop-session", *sys.argv[1:]])
     manager = subprocess.Popen(["openbox", "--config-file", "/opt/specter-mirror/runtime/openbox.xml"])
     child = None
+    stopped = False
 
     def stop(_signal, _frame):
+        nonlocal stopped
+        stopped = True
         manager.terminate()
         if child is not None and child.poll() is None:
             child.terminate()
@@ -39,6 +42,8 @@ def main():
             child = subprocess.Popen(["/usr/bin/sudo", "-n", "/usr/local/sbin/specter-mirror-live-install"])
             while child.poll() is None and manager.poll() is None:
                 time.sleep(0.2)
+        if stopped or manager.poll() is not None:
+            return
         child = subprocess.Popen(["/usr/bin/python3", "/opt/specter-mirror/runtime/run.py"])
         while child.poll() is None and manager.poll() is None:
             time.sleep(0.2)

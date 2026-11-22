@@ -203,9 +203,10 @@ def startup_text(original, enable):
     if original.count(BEGIN) != original.count(END) or original.count(BEGIN) > 1:
         raise ValueError("Malformed managed startup block; repair it before provisioning")
     if BEGIN in original:
-        start, finish = original.index(BEGIN), original.index(END) + len(END)
+        start, finish = original.index(BEGIN), original.index(END)
         if finish < start:
             raise ValueError("Malformed managed startup block")
+        finish += len(END)
         if original[finish:finish + 1] == "\n":
             finish += 1
         original = original[:start] + original[finish:]
