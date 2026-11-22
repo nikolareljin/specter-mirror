@@ -2,6 +2,14 @@
 
 use std::fmt;
 
+mod dither;
+mod grayscale;
+mod sobel;
+
+pub use dither::bayer_dither_gray8;
+pub use grayscale::grayscale_rgb24;
+pub use sobel::sobel_l1;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrameError {
     EmptyDimension,
