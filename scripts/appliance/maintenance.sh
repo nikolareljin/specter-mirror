@@ -9,9 +9,8 @@
 #   disable  Request exit and suppress startup at future logins.
 #   enable   Permit startup at the next desktop login.
 # REQUIREMENTS:
-#   Bash, sed and Python 3. VM creation needs VBoxManage.
-#   ISO creation needs xorriso, a verified base ISO and a verified bundle.
-#   Provisioning needs an existing non-root antiX desktop account.
+#   Bash, sed and Python 3; run as the appliance desktop user.
+#   No root privileges, build toolchain or virtual machine tools are needed.
 # EXAMPLES:
 #   ./scripts/appliance/maintenance.sh --help
 #   ./scripts/appliance/maintenance.sh --options

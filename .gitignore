@@ -18,3 +18,4 @@ __pycache__/
 *.vbox-prev
 *.ova
 *.ovf
+*.qcow2

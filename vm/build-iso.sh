@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SCRIPT: vm/build-iso.sh
-# DESCRIPTION: Create an antiX toolkit preview ISO, preserving the live filesystem.
+# DESCRIPTION: Build verified antiX appliance or toolkit installation media.
 # USAGE: ./vm/build-iso.sh [options]
 # PARAMETERS:
 #   -h, --help  Print this header without checking prerequisites.
@@ -10,11 +10,13 @@
 #   --bundle PATH         Verified proof bundle directory.
 #   --bundle-sha256 HEX   Trusted SHA-256 of bundle SHA256SUMS.
 #   --output PATH         New ISO path; existing files are refused.
-#   --allow-proof         Required opt-in; this is toolkit preview media.
+#   --allow-proof         Required opt-in for the display validation binary.
+#   --appliance           Embed the app and kiosk setup in the live filesystem.
+#   --builder-image NAME  Local isolated builder image for --appliance mode.
 # REQUIREMENTS:
-#   Bash, sed and Python 3. VM creation needs VBoxManage.
-#   ISO creation needs xorriso, a verified base ISO and a verified bundle.
-#   Provisioning needs an existing non-root antiX desktop account.
+#   Bash, sed, Python 3 and xorriso on the build host.
+#   A checksum-verified base ISO, verified bundle and space for the output.
+#   Appliance mode also requires the isolated Docker builder image.
 # EXAMPLES:
 #   ./vm/build-iso.sh --help
 #   ./vm/build-iso.sh --options

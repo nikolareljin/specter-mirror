@@ -6,6 +6,7 @@
 #   -h, --help  Print this header without checking dependencies.
 #   --binary PATH   Prebuilt ELF32 i686 application executable.
 #   --output PATH   New directory to create; existing outputs are refused.
+#   --runtime-packages PATH  Reviewed i386/all .deb archives for offline setup.
 #   --options   Print the detailed command-specific argument list.
 # REQUIREMENTS:
 #   Bash, sed and Python 3. No Rust or Node toolchain on the target.

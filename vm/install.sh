@@ -16,9 +16,8 @@
 #   --session NAME  kiosk (default) or desktop. Kiosk bypasses desktop startup.
 #   --no-autologin  Keep a login prompt instead of the default kiosk auto-login.
 # REQUIREMENTS:
-#   Bash, sed and Python 3. VM creation needs VBoxManage.
-#   ISO creation needs xorriso, a verified base ISO and a verified bundle.
-#   Provisioning needs an existing non-root antiX desktop account.
+#   Bash, sed, Python 3 and an existing non-root antiX desktop account.
+#   System installation requires root; --root staging does not.
 # EXAMPLES:
 #   ./vm/install.sh --help
 #   ./vm/install.sh --options

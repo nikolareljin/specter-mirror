@@ -63,7 +63,21 @@ case "${1:-check}" in
     cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
   test) cargo test --locked --workspace ;;
   build) cargo build --locked --workspace ;;
-  build-i686) cargo build --locked -p spook-kiosk --release --target i686-unknown-linux-gnu ;;
+  build-i686)
+    mirror_cargo_dir="${CARGO_HOME:-$HOME/.cargo}"
+    if [[ "${CARGO_ENCODED_RUSTFLAGS+x}" == x ]]; then
+      mirror_flags="$CARGO_ENCODED_RUSTFLAGS"
+    else
+      mirror_flags=""
+      if [[ -n "${RUSTFLAGS:-}" ]]; then
+        read -r -a mirror_existing_flags <<< "${RUSTFLAGS//$'\n'/ }"
+        for mirror_flag in "${mirror_existing_flags[@]}"; do
+          mirror_flags+="${mirror_flags:+$'\x1f'}$mirror_flag"
+        done
+      fi
+    fi
+    export CARGO_ENCODED_RUSTFLAGS="${mirror_flags:+$mirror_flags$'\x1f'}--remap-path-prefix=$PWD=/src/specter-mirror"$'\x1f'"--remap-path-prefix=$mirror_cargo_dir=/cargo"
+    cargo build --locked -p spook-kiosk --release --target i686-unknown-linux-gnu ;;
   fmt) cargo fmt --all ;;
   fmt-check) cargo fmt --all -- --check ;;
   core-test) cargo test --locked -p spook-core ;;

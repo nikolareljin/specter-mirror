@@ -7,6 +7,11 @@
 | TypeScript | 7.0.2, web/package-lock.json | Frontend type checking | Apache-2.0 |
 | ci-helpers | production | Reusable build, test and security workflows | MIT |
 | script-helpers | Installed development tooling | Local publication hook installation | MIT |
+| antiX | 26.1, 32-bit full image | Appliance base and official interactive installer | Distribution packages retain their own licenses |
+| Openbox, wmctrl, xterm | Runtime packages from the selected antiX release | Dedicated X11 session and maintenance terminal | Preserve each package's copyright notices |
+| QEMU | Build host installation | Primary disposable VM validation | GPL-2.0 and component notices |
+| VirtualBox | Optional build host installation | Secondary VM validation | Check the installed edition and optional extension licenses |
+| Docker, Debian, squashfs-tools, xorriso | Pinned builder base and host tools | Isolated filesystem and ISO preparation | Preserve applicable component licenses |
 
 The application source and original SVG artwork are new. The libraries and
 build tooling above are reused components, not newly developed application

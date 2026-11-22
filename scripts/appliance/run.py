@@ -64,7 +64,11 @@ def main():
                 matched = False
                 for line in windows.stdout.splitlines():
                     fields = line.split()
-                    if len(fields) >= 3 and fields[2] == str(child.pid):
+                    identity = len(fields) >= 5 and (
+                        fields[2] == str(child.pid)
+                        or (fields[2] == "0" and " ".join(fields[4:]) == "SpecterMirror - synthetic frame proof")
+                    )
+                    if identity:
                         try:
                             subprocess.run(["wmctrl", "-ir", fields[0], "-b", "add,fullscreen"],
                                            timeout=3, check=False, stdout=subprocess.DEVNULL,

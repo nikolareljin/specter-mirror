@@ -29,7 +29,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         "SpecterMirror - synthetic frame proof",
         width,
         height,
-        WindowOptions::default(),
+        WindowOptions {
+            resize: true,
+            scale_mode: minifb::ScaleMode::AspectRatioStretch,
+            ..WindowOptions::default()
+        },
     )?;
     window.set_target_fps(30);
     while window.is_open() && !window.is_key_down(Key::Escape) {

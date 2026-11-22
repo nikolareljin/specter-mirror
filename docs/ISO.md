@@ -1,5 +1,46 @@
 # antiX installation media
 
+## Appliance ISO
+
+Use the pinned 32-bit antiX full image below. Build the i686 application and
+prepare the runtime package archives on a clean guest of that exact release:
+
+```bash
+sudo apt-get update
+sudo apt-get --download-only install openbox xterm
+```
+
+Transfer the reviewed archives from `/var/cache/apt/archives` to the build
+workstation, then create the bundle with `--runtime-packages` as described in
+[installation](INSTALL_ANTIX.md). Keep the printed bundle manifest checksum.
+
+The full builder requires Docker on an x86 Linux build host with 32-bit
+executable support. The container extracts the verified base, installs only
+the bundled runtime packages without networking, configures the dedicated
+session and creates a new SquashFS filesystem. Host login and desktop settings
+are not modified. Build context is restricted to the tool image definition.
+
+```bash
+docker build -t specter-mirror-iso-builder:local vm/iso-builder
+./vm/build-iso.sh --base /tmp/antiX-26.1_386-full.iso \
+  --base-sha256 6ec6f6522c69b4411d32f61e853709cdaf94df709c264b2a4d7de9724ce57fbc \
+  --bundle /tmp/specter-mirror-bundle --bundle-sha256 HEX \
+  --output /tmp/specter-mirror-appliance.iso --allow-proof --appliance
+```
+
+Booting appliance media opens the official interactive antiX installer. Disk
+selection and erasure confirmation remain mandatory. Automatic login is
+preselected using the installer's `User/Autologin` setting. The kiosk follows
+the account selected during installation. After reboot it starts the Rust
+application without normal desktop autostarts or a login prompt. Maintenance
+remains accessible with Ctrl+Alt+Escape. The privileged installer entry checks
+for mounted live media and refuses execution from an installed system.
+
+The ISO contains the app and its runtime dependencies; the target needs no
+Rust, Cargo, Node, Docker or hypervisor. The current display validation binary
+requires `--allow-proof`. Validate the resulting image in a fresh offline
+guest before using it on physical hardware.
+
 ## Toolkit preview ISO
 
 `vm/build-iso.sh` adds a verified proof bundle and installer tools under
@@ -31,7 +72,7 @@ filesystem is unchanged. Record local tool versions, source revision, output
 checksum and actual VM tests with each candidate. Do not publish an image
 solely because the builder returned success.
 
-## Full appliance remaster, later phase
+## Release validation
 
 antiX distinguishes [live remastering](https://download.tuxfamily.org/antix/docs-antiX-21/FAQ/remaster.html)
 from an installed-system snapshot. Its official
@@ -40,27 +81,22 @@ media from a running system. Use supported tools from the selected antiX
 release inside a clean guest; do not assume old upstream configuration
 schemas match the installed package.
 
-After the native application and complete runtime bundle exist:
+Before distributing an appliance image:
 
-1. Install the pinned 32-bit full image in a disposable guest.
-2. Provision with the shared installer and test without networking.
-3. Apply original spooky artwork to the boot menu, live desktop, installer
-   presentation and startup using that release's supported customization
-   points. Preserve official disk choices and confirmations.
-4. Create a generic distributable snapshot with the guest's official tool.
-   Review exclusions, accounts, passwords, host keys, histories and machine
-   identifiers. Do not snapshot a personal workstation.
-5. Boot the candidate, test sample mode and maintenance, run the official
-   installer into a second disposable disk and reboot the installed guest.
-6. Repeat from a clean base and explain output differences before claiming
-   reproducibility.
+1. Boot the candidate without networking and confirm the official installer.
+2. Install into a new disposable disk, then reboot from that disk and confirm
+   automatic login, fullscreen application startup and maintenance access.
+3. Exercise repeat provisioning, checksum refusal, recovery and uninstall.
+4. Record base/bundle/output hashes, tool versions and actual hardware tests.
+5. Preserve all source, library, asset and distribution notices; resolve their
+   redistribution requirements before publishing.
+6. Repeat from a clean base and explain differences before claiming reproducibility.
 
 Record package versions/sources, base checksum, snapshot tool version,
 scripted changes, dependency licenses and redistribution notices. Original
 application code is Apache-2.0; antiX packages retain their own licenses.
 Resolve distribution obligations before public ISO/OVA publication.
 
-No destructive unattended disk installer is provided. Full remastering,
-installation theming and release publication require working application,
-live boot, installer and installed-system validation. Keep large media outside
-Git and distribute only validated artifacts through releases.
+No destructive unattended disk installer is provided. Keep large media outside
+Git and distribute only validated artifacts through releases. Installation
+theming must preserve the official installer's disk choices and confirmations.

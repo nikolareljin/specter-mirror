@@ -12,9 +12,8 @@
 #   --memory MB       512-4096, default 1024.
 #   --disk-mb MB      8192-32768, default 16384.
 # REQUIREMENTS:
-#   Bash, sed and Python 3. VM creation needs VBoxManage.
-#   ISO creation needs xorriso, a verified base ISO and a verified bundle.
-#   Provisioning needs an existing non-root antiX desktop account.
+#   Bash, sed, Python 3 and VBoxManage on the development host.
+#   A checksum-verified antiX ISO and a new disposable output directory.
 # EXAMPLES:
 #   ./vm/create.sh --help
 #   ./vm/create.sh --options

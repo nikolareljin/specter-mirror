@@ -1,10 +1,32 @@
-# antiX virtual appliance tools
+# Virtual machine validation
 
-The tools provision the current synthetic frame proof. They do not yet
-provide a working haunted webcam appliance. See [installation](../docs/INSTALL_ANTIX.md)
+The tools provision the Rust display application for installation validation.
+See [installation](../docs/INSTALL_ANTIX.md)
 and [ISO scope](../docs/ISO.md) before creating media.
 
-## Create a disposable guest
+## QEMU/KVM, primary path
+
+Use `qemu-system-i386` and `qemu-img` on the development workstation. KVM is
+selected when `/dev/kvm` is accessible; otherwise the runner uses TCG. The
+guest has one CPU, 1024 MB RAM and a new sparse 16 GB virtual disk. Networking
+is disabled unless `--network user` is explicitly requested. There are no
+shared host folders, physical disk attachments or incoming network ports.
+
+```bash
+./vm/qemu.sh --iso /tmp/specter-mirror.iso --iso-sha256 HEX \
+  --directory /tmp/specter-mirror-qemu
+./vm/qemu.sh --iso /tmp/specter-mirror.iso --iso-sha256 HEX \
+  --directory /tmp/specter-mirror-qemu --resume
+```
+
+Replace HEX with the trusted checksum of the selected ISO. `--resume` boots
+the existing disk without recreating it. A per-directory lock refuses a second
+controller before it can alter the first run's monitor or serial output.
+Use `--headless` for a local monitor socket and serial log. Shut down inside
+the guest before closing the emulator. Neither hypervisor is needed on the
+physical appliance; it boots the installed antiX system directly.
+
+## VirtualBox, secondary path
 
 Download and verify the 32-bit full image from the [official antiX page](https://antixlinux.com/download/).
 The recorded base is antiX-26.1_386-full.iso, released September 29, 2026.
@@ -39,7 +61,7 @@ removable media or the [toolkit ISO](../docs/ISO.md). Run `vm/install.sh` or
 
 1. Install twice with `--allow-proof`; compare configuration and startup files.
 2. Disconnect networking and repeat with `--offline`. All runtime dependencies
-   must already exist; a complete dependency bundle is pending.
+   are supplied by the exact base plus the reviewed bundle package archives.
 3. Reboot and confirm automatic login into one fullscreen synthetic frame
    window, with no normal desktop applications. Escape exits without restarting;
    Ctrl+Alt+Escape must still open maintenance. Reboot and repeat.
@@ -51,12 +73,11 @@ removable media or the [toolkit ISO](../docs/ISO.md). Run `vm/install.sh` or
 These are operator acceptance steps, not claims of executed VM testing.
 Automated tests cover staging, negative inputs, repeat provisioning,
 rollback, bounded restarts and ISO payload/boot metadata preservation.
-They do not boot a real antiX guest. Camera capture, all effects and physical
-NB205/D630 compatibility remain separate application and hardware work.
+They do not boot a real antiX guest or prove physical NB205/D630 compatibility.
 
 ## USB camera and export
 
-After the native camera pipeline exists, attach a compatible USB webcam using
+Attach a compatible USB webcam using
 VirtualBox USB filters and inspect `/dev/video*` inside the guest. Host cameras
 are not automatically V4L2 devices. Check host permissions and the licenses
 of optional VirtualBox components before installing or redistributing them.
@@ -76,5 +97,5 @@ or outside the checkout until a reviewed release is ready.
 | ELF32/SSE2/loader failure | Check the exact CPU, 32-bit userspace and native glibc build baseline |
 | Missing runtime library offline | Install matching antiX runtime packages before disconnecting networking |
 | Window is not fullscreen | Check IceWM/EWMH and `wmctrl -lp`; Escape and maintenance remain available |
-| No automatic startup | Check `~/.desktop-session/startup` and antiX desktop-session settings |
+| No automatic startup | Check Slimski/SLiM configuration; desktop mode uses `~/.desktop-session/startup` |
 | Application repeatedly exits | Startup stops after three attempts; inspect the user's local session log |

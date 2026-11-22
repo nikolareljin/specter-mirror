@@ -1,7 +1,25 @@
-# SpecterMirror toolkit preview
+# SpecterMirror installation media
 
-This media contains a synthetic frame proof, not the completed webcam app.
-It does not replace antiX's interactive disk installer or alter the live root.
+This media contains the Rust synthetic frame proof for display validation.
+Check `PROVENANCE.json`: `appliance-preview` embeds the application and its
+runtime packages in the live filesystem; `synthetic-proof-toolkit` retains
+the original live filesystem and requires manual provisioning after install.
+Both modes preserve antiX's official interactive disk installer.
+
+## Appliance media
+
+1. Verify the complete ISO checksum against your trusted build record.
+2. Boot the media. The official installer opens automatically.
+3. Select the destination disk, review the erasure confirmation and create
+   your account. Keep automatic login selected and retain the account password
+   for maintenance and console recovery.
+4. Reboot from the installed disk. The dedicated session starts the Rust app.
+
+Ctrl+Alt+Escape opens a maintenance terminal. Escape exits the display proof
+while preserving that recovery key. No normal desktop autostarts run in the
+dedicated session. The application runs without root privileges.
+
+## Manual toolkit installation
 
 1. Verify the complete ISO checksum against your trusted build record.
 2. Boot antiX and use its official interactive installer. Choose a desktop
@@ -17,12 +35,12 @@ sudo bash scripts/appliance/install.sh --bundle "$PWD/bundle" \
 bash scripts/appliance/verify.sh --sha256 HEX
 ```
 
-Use `--offline` instead of `--install-deps` only if all runtime packages are
-already present. The current media does not include a complete dependency
-package set. The installer requires Python 3, Bash, 32-bit antiX, SSE2 and
-runtime libraries compatible with the prebuilt binary.
+Use `--offline` instead of `--install-deps` when the bundle contains the
+reviewed runtime package archives for this exact antiX release, or all required
+libraries and tools are already installed. Provisioning requires Python 3,
+Bash, 32-bit antiX, SSE2 and runtime libraries compatible with the binary.
 
-The default installation configures SLiM automatic login and a dedicated
+The default installation configures Slimski or SLiM automatic login and a dedicated
 session for the selected account on this antiX system. It bypasses normal
 desktop startup. Reboot after provisioning. Ctrl+Alt+Escape opens maintenance;
 Escape exits the proof while preserving that recovery key.
@@ -35,5 +53,5 @@ sudo bash scripts/appliance/uninstall.sh --sha256 HEX
 ```
 
 The application runs without root privileges. Uninstall restores the original
-SLiM configuration if it has not been edited since provisioning. User data
+display manager configuration if it has not been edited since provisioning. User data
 remains. No Rust or Node build toolchain is needed to run the prebuilt proof.

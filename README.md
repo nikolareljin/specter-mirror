@@ -35,7 +35,7 @@ The X11 proof needs a display; use `xvfb-run -a ./dev native-proof` in CI.
 - [Architecture](docs/ARCHITECTURE.md) and [effects](docs/EFFECTS.md).
 - [i686 build](docs/BUILD_I686.md), [antiX installation](docs/INSTALL_ANTIX.md), [hardware](docs/HARDWARE.md).
 - [WASM build](docs/BUILD_WASM.md), [web interface](docs/WEB_DEMO.md), [privacy](docs/PRIVACY.md).
-- [VirtualBox](docs/VIRTUALBOX.md), [ISO toolkit](docs/ISO.md), [benchmarks](docs/BENCHMARKS.md), [demo verification](docs/DEMO.md).
+- [Virtual machines](vm/README.md), [ISO media](docs/ISO.md), [benchmarks](docs/BENCHMARKS.md), [demo verification](docs/DEMO.md).
 - [Kiro development](docs/KIRO-DEVELOPMENT.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md).
 - [Asset provenance](assets/PROVENANCE.md).
 - [Reused components and licenses](docs/DEPENDENCIES.md).

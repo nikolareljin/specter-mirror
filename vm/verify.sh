@@ -8,9 +8,8 @@
 #   --sha256 HEX    Trusted SHA-256 of the installed SHA256SUMS file.
 #   --root PATH     Absolute staging root; default is the real system /.
 # REQUIREMENTS:
-#   Bash, sed and Python 3. VM creation needs VBoxManage.
-#   ISO creation needs xorriso, a verified base ISO and a verified bundle.
-#   Provisioning needs an existing non-root antiX desktop account.
+#   Bash, sed, Python 3 and a provisioned target or staging root.
+#   A trusted checksum for the installed bundle manifest.
 # EXAMPLES:
 #   ./vm/verify.sh --help
 #   ./vm/verify.sh --options

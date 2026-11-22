@@ -1,8 +1,7 @@
 # Install the synthetic proof on antiX
 
-This installer supports the current X11 synthetic frame proof. The native
-camera pipeline, sample-video playback and haunted effects are not implemented.
-Installation requires `--allow-proof`. It is not a completed appliance release.
+This installer supports the X11 synthetic frame proof used for display and
+installation validation. Installation requires `--allow-proof`.
 
 ## Build and trust a bundle
 
@@ -13,6 +12,7 @@ then create a directory bundle:
 ./dev build-i686
 ./scripts/appliance/bundle.sh \
   --binary target/i686-unknown-linux-gnu/release/spook-kiosk \
+  --runtime-packages /tmp/antix-runtime-packages \
   --output /tmp/specter-mirror-bundle
 ```
 
@@ -28,7 +28,7 @@ Install 32-bit antiX using the official interactive installer. Discover the
 actual [hardware](HARDWARE.md); the standard Rust i686 target requires SSE2.
 Use an existing non-root desktop user with a home under `/home`. The target
 needs Bash, Python 3, `getconf`, `ldd`, X11, `wmctrl` and the executable's
-runtime libraries. No Rust, Cargo, Node or Kiro is needed. Other OSes and
+runtime libraries. No Rust, Cargo or Node build toolchain is needed. Other OSes and
 64-bit userspace are rejected.
 
 Copy the bundle and `scripts/appliance/` to trusted local media. Replace HEX
@@ -36,32 +36,32 @@ with the trusted manifest checksum and mirror with the chosen account:
 
 ```bash
 sudo ./scripts/appliance/install.sh --bundle /media/usb/specter-mirror-bundle \
-  --sha256 HEX --user mirror --profile auto --allow-proof --install-deps
+  --sha256 HEX --user mirror --profile auto --allow-proof --offline
 ./scripts/appliance/verify.sh --sha256 HEX
 ```
 
-`--install-deps` uses the target's configured package repositories for runtime
-packages only. Use `--offline` instead to forbid network package installation;
-every runtime dependency must already exist. Bundles do not yet include
-transitive `.deb` dependencies. This is not a complete fresh-system offline
-installer.
+`--runtime-packages` includes reviewed i386/all `.deb` archives. Prepare these
+on a clean guest using the same pinned antiX base. `--offline` installs only
+those archives and checks runtime libraries without network package setup.
+There is no network fallback. `--install-deps` instead uses the target's
+configured repositories when online runtime package setup is wanted.
 
 Profiles `nb205`, `d630`, `virtualbox` and `generic` are explicit overrides.
 `auto` recognizes NB205/D630 DMI names and otherwise selects `generic`.
-The profile is recorded for future tuning; it does not change the synthetic
-proof's fixed 320 x 240 processing. The proof does not access cameras.
+The profile is installation metadata; the display proof processes a fixed
+320 x 240 frame and does not access cameras.
 
 ## Startup and maintenance
 
 Managed files live under `/opt/specter-mirror` and
 `/etc/specter-mirror/config.json`. Existing configuration is preserved.
-The default `--session kiosk` enables SLiM automatic login for the selected
+The default `--session kiosk` enables Slimski/SLiM automatic login for the selected
 non-root account. The antiX target boots directly into the app without a login
 prompt, normal desktop, panels or desktop autostarts. A minimal Openbox process
 provides window management. Essential OS services still run. No login or
 desktop setting on the development workstation is changed.
 
-The installer supports the stock antiX SLiM `login_cmd` only and refuses an
+The installer supports stock antiX Slimski `atlogin_cmd` and SLiM `login_cmd`, and refuses an
 unrecognized display manager configuration. It saves the original configuration
 and restores it during uninstall. Later operator edits require reconciliation
 before reinstall/uninstall so they are not overwritten. There is no systemd
@@ -108,9 +108,10 @@ files. If managed files changed, inspect them locally before removal.
 
 `--root /absolute/test-root` stages filesystem changes only. It does not
 install packages, run the binary, check CPU/glibc or prove reboot startup.
-The staging tree must contain antiX `etc/os-release` and a suitable
+The staging tree must contain antiX's release marker or distribution ID and a suitable
 `etc/passwd` account. Tests create disposable fixtures; do not use a personal
 installation as a staging target.
 
-See [VirtualBox](VIRTUALBOX.md) and [ISO tooling](ISO.md). Fresh guest,
-complete offline bundle, reboot and hardware acceptance remain pending.
+See the [VM guide](../vm/README.md) and [ISO tooling](ISO.md) for installation
+and reboot validation. Compilation and staging do not establish physical
+hardware compatibility.

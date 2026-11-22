@@ -57,7 +57,7 @@ jobs:
       lint_command: |
         bash -n dev check scripts/discover_hardware.sh
         for script in scripts/appliance/*.sh vm/*.sh; do bash -n "$script"; done
-        shellcheck scripts/appliance/*.sh vm/*.sh
+        shellcheck dev scripts/appliance/*.sh vm/*.sh
       test_command: python3 -m unittest discover -s tests -p 'test_*.py'
       extra_command: python3 scripts/check_docs.py
       timeout_minutes: 5
