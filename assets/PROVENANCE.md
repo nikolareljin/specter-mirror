@@ -6,6 +6,7 @@
 | branding/hero.svg | Original SVG composition using the product mark and mirror paths | Apache-2.0 | README hero |
 | illustrations/antique-mirror.svg | Original SVG paths and gradients | Apache-2.0 | Interface concept artwork |
 | web/public/favicon.svg | Copy of the original mark | Apache-2.0 | Browser icon |
+| web/src/sample.ts | Original procedural Canvas geometry and visitor timeline | Apache-2.0 | Generated sample input, not a recording or real person's likeness |
 
 Created on 2026-11-16. No raster artwork or camera output is included.
 The illustration is not a screenshot or an implemented camera effect.

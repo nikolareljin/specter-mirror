@@ -1,0 +1,65 @@
+.fullscreen-controls { display: none; }
+.source-buttons { grid-template-columns: 1fr 1fr; }
+.source-buttons button { padding: .7rem .4rem; font-size: .75rem; }
+.mirror-console label:not(.motion) { margin-top: .75rem; margin-bottom: .4rem; }
+.stage.mirror-running { grid-template-columns: minmax(0, 1.6fr) minmax(260px, .8fr); }
+.mirror-running .intro { display: none; }
+.mirror-running .mirror { max-width: none; }
+@media (max-width: 900px) {
+  .stage.mirror-running { grid-template-columns: minmax(0, 1fr); }
+}
+.mirror:fullscreen {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+}
+.mirror:fullscreen .frame {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.mirror:fullscreen .frame::before { display: none; }
+.mirror:fullscreen .frame canvas {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: cover;
+  border: 0;
+}
+.mirror:fullscreen .fullscreen-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  left: 1rem;
+  justify-content: flex-end;
+}
+.fullscreen-controls button {
+  width: auto;
+  margin: 0;
+  padding: .6rem .8rem;
+  background: var(--bg);
+  opacity: .8;
+}
+.fullscreen-controls button:hover,
+.fullscreen-controls button:focus-visible { opacity: 1; }
+.mirror:fullscreen figcaption {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  padding: .6rem;
+  margin: 0;
+  text-align: left;
+  background: var(--bg);
+  pointer-events: none;
+}
+.mirror:fullscreen figcaption span { margin-top: .2rem; }

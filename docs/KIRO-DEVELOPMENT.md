@@ -21,6 +21,13 @@ unsaturated edges and camera loss during engine initialization. Chromium
 verification used the generated scene and simulated camera input, not a
 physical webcam. Hook execution has not been verified for this task.
 
+The timestamped-history task in `04-haunted-experience` has core and adapter
+tests for delay/trail combinations, literal pixels, warm-up, wraparound, reset,
+safe timestamps and error preservation. It supplies the timed WASM methods
+used by the browser controls. Review adds fallible storage reservation and an
+allocation-capacity error test. The session reported manual checks and no hook
+execution; no physical hardware or performance measurement is established.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's

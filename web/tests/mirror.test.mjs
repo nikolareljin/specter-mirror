@@ -56,6 +56,16 @@ function setup(overrides = {}) {
         w,
         h,
         freed: 0,
+        configured: [],
+        timed: [],
+        configure_temporal(delay, strength) {
+          if (overrides.configureError) throw new Error('configuration failed');
+          this.configured.push({ delay, strength });
+        },
+        process_timed_rgba(input, mode, intensity, elapsed) {
+          this.timed.push(elapsed);
+          return this.process_rgba(input, mode, intensity);
+        },
         process_rgba(input, mode, intensity) {
           log.calls.push({ mode, intensity, length: input.length });
           if (overrides.processError) throw new Error('boom');
@@ -116,6 +126,57 @@ test('camera constraints are video only, 320x240 and prefer a facing mode', () =
   assert.deepEqual(CAMERA_CONSTRAINTS.video.width, { ideal: 320 });
   assert.deepEqual(CAMERA_CONSTRAINTS.video.height, { ideal: 240 });
   assert.deepEqual(CAMERA_CONSTRAINTS.video.facingMode, { ideal: 'user' });
+});
+
+test('temporal controls configure the engine and timed frames receive integer elapsed time', async () => {
+  const { controller, log, step } = setup();
+  controller.setTemporal(250, 115);
+  await controller.startSample();
+  assert.deepEqual(log.engines[0].configured, [{ delay: 250, strength: 115 }]);
+  step(); step();
+  assert.equal(log.engines[0].timed.length, 2);
+  assert.ok(log.engines[0].timed.every(Number.isSafeInteger));
+  assert.ok(log.engines[0].timed[1] >= log.engines[0].timed[0]);
+  controller.setTemporal(0, 128);
+  assert.deepEqual(log.engines[0].configured.at(-1), { delay: 0, strength: 128 });
+  controller.stop();
+});
+
+test('reduced motion disables temporal layers and restores the requested combination', async () => {
+  const { controller, log } = setup();
+  controller.setTemporal(300, 100);
+  controller.setReducedMotion(true);
+  await controller.startSample();
+  const engine = log.engines[0];
+  assert.deepEqual(engine.configured, [{ delay: 0, strength: 0 }]);
+  controller.setTemporal(600, 255);
+  assert.deepEqual(engine.configured.at(-1), { delay: 0, strength: 0 });
+  controller.setReducedMotion(false);
+  assert.deepEqual(engine.configured.at(-1), { delay: 600, strength: 255 });
+  controller.stop();
+});
+
+test('invalid temporal settings are ignored without resetting working history', async () => {
+  const { controller, log } = setup();
+  controller.setTemporal(200, 100);
+  await controller.startSample();
+  const engine = log.engines[0];
+  for (const [delay, strength] of [[NaN, 0], [-1, 0], [601, 0], [0.5, 0],
+    [0, Infinity], [0, -1], [0, 256], [0, 1.5]]) controller.setTemporal(delay, strength);
+  controller.setTemporal(200, 100);
+  assert.deepEqual(engine.configured, [{ delay: 200, strength: 100 }]);
+  controller.stop();
+});
+
+test('configuration failure cleans up acquired camera and engine', async () => {
+  const media = fakeStream();
+  const { controller, log } = setup({ configureError: true,
+    deps: { getUserMedia: async () => media.stream } });
+  await controller.startCamera();
+  assert.equal(controller.getState(), 'error');
+  assert.equal(media.track.stopped, 1);
+  assert.equal(log.engines[0].freed, 1);
+  assert.equal(log.attached, 0);
 });
 
 test('sample start does not ask for camera permission and renders frames', async () => {

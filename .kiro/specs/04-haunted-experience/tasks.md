@@ -1,12 +1,12 @@
 # Haunted interaction tasks
 
 Execute one bounded task at a time. Check off work only after implementation
-and verification; this list does not record completed execution.
+and verification. Keep execution evidence in `docs/KIRO-DEVELOPMENT.md`.
 
 - [ ] Add validated motion observations with normalized changed-pixel location,
   threshold hysteresis, stillness grace and a clock-driven five-state machine.
   Test reset, malformed input, time boundaries and huge time jumps.
-- [ ] Add one bounded timestamped frame-history ring shared by delayed
+- [x] Add one bounded timestamped frame-history ring shared by delayed
   reflection and ghost trails. Verify warm-up, reset, reuse and the 4 MiB cap.
 - [ ] Add independent procedural ghost/skull geometry, distortion, frost,
   vignette and palettes, with original golden fixtures at both processing sizes.
