@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "wasm:build": "wasm-pack build ../crates/spook-web --target web --out-dir ../../web/generated --no-opt",
+    "predev": "npm run wasm:build",
     "dev": "vite --host 127.0.0.1",
+    "prebuild": "npm run wasm:build",
     "build": "tsc --noEmit && vite build",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "engines": {

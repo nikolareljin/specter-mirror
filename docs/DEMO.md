@@ -1,8 +1,10 @@
 # Demo verification
 
-The current native proof renders a synthetic frame. There is no live camera
-demo, measured physical performance, processed-camera screenshot or deployed
-Pages application to present as completed yet.
+The browser runs shared Rust processing on webcam or generated sample frames.
+Chromium verification covers generated output in all three modes, simulated
+camera start/stop and desktop/mobile layouts. This does not establish real
+webcam or physical laptop compatibility. The native proof renders a synthetic
+frame; no deployed Pages application or physical performance is claimed.
 
 Before release, verify camera permission grant/deny, missing device, stop,
 sample fallback, effect controls and reduced motion in desktop/mobile browsers.

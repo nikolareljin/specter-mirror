@@ -19,3 +19,4 @@ __pycache__/
 *.ova
 *.ovf
 *.qcow2
+/web/generated/

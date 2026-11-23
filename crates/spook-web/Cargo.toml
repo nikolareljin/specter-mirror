@@ -10,3 +10,5 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 spook-core = { path = "../spook-core" }
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.130"
