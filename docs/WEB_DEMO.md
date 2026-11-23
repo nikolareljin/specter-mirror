@@ -45,7 +45,29 @@ browser, not performance claims.
 ## Status
 Camera access over HTTPS, other browsers and deployment still need manual
 verification. The camera requires a secure context (HTTPS or localhost).
-GitHub Pages project hosting must retain `/specter-mirror/` for direct About
-navigation and all asset/WASM URLs. Do not enable deployment until the
-integrated demo works anonymously and permission/error paths are verified.
+GitHub Pages retains `/specter-mirror/` for direct About navigation and asset
+URLs. The Pages workflow validates pull requests without uploading or deploying.
+Only verified `main` builds publish through `ci-helpers@production`. Build jobs
+have read permissions; the separate deployment job receives Pages permissions.
 The mirror artwork is an original illustration, not a processed sample.
+
+## Publication
+
+Run `bash scripts/pages.sh build` to test and build. After reviewing the output,
+run `bash scripts/pages.sh record` with `SPECTER_PAGES_HELPERS` pointing to the
+pinned helper checkout. This local operation inspects the output and records
+`web/pages-manifest.json`. It requires the operator's local publication setup.
+Commit the manifest with each site change. CI reads the manifest from its exact
+commit object, so build scripts cannot approve output by rewriting the working
+copy. CI cannot record a replacement manifest.
+
+Before upload, `bash scripts/pages.sh check` requires the complete output tree
+to match those digests and reruns the publication tools. Unexpected files,
+links, source maps, broken project asset URLs and missing tools stop publication.
+Only `web/dist` is uploaded. Tool diagnostics stay outside Git and are never
+included in logs or artifacts. Application builds need no publication tooling.
+
+The publication tooling uses script-helpers revision
+`548597c18f70c010a289c29305c45fe84863d12c`, Gitleaks 8.30.1 and Foxguard 0.14.1.
+Tool setup is for the build runner; none is installed on a visitor's computer.
+A successful deployment is required before the public demo URL is available.

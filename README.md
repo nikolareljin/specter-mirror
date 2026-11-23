@@ -55,8 +55,9 @@ provision the development workstation. Run `./demo --help` for complete examples
 - [Reused components and licenses](docs/DEPENDENCIES.md).
 
 The planned demo destination is https://nikolareljin.github.io/specter-mirror/.
-Deployment is not enabled in this revision. The web source includes
-a matching About page with links to selected public projects.
+The Pages workflow publishes verified builds from `main`; deployment must
+succeed before that URL is available. The web source includes a matching
+About page with links to selected public projects.
 
 ## Next steps
 
