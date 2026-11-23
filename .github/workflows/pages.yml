@@ -1,0 +1,41 @@
+name: Browser demo Pages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: specter-pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verified site
+    uses: nikolareljin/ci-helpers/.github/workflows/pages-build.yml@production
+    permissions:
+      contents: read
+      pages: read
+    with:
+      node_version: '24'
+      install_command: |
+        bash scripts/pages.sh tools
+        npm ci --prefix web
+      build_command: |
+        bash scripts/pages.sh build
+        bash scripts/pages.sh check
+      pages_path: web/dist
+      upload: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      timeout_minutes: 20
+  deploy:
+    name: Publish browser demo
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    uses: nikolareljin/ci-helpers/.github/workflows/pages-deploy.yml@production
+    permissions:
+      pages: write
+      id-token: write

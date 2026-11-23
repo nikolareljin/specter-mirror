@@ -9,6 +9,7 @@
 | wasm-pack | 0.15.1, development tool | Builds web/generated bindings; not a runtime dependency | MIT OR Apache-2.0 |
 | ci-helpers | production | Reusable build, test and security workflows | MIT |
 | script-helpers | Installed development tooling | Local publication hook installation | MIT |
+| script-helpers | 548597c18f70c010a289c29305c45fe84863d12c | Pages publication checks and pinned scanner installation, outside the application | MIT |
 | antiX | 26.1, 32-bit full image | Appliance base and official interactive installer | Distribution packages retain their own licenses |
 | Openbox, wmctrl, xterm | Runtime packages from the selected antiX release | Dedicated X11 session and maintenance terminal | Preserve each package's copyright notices |
 | QEMU | Build host installation | Primary disposable VM validation | GPL-2.0 and component notices |
