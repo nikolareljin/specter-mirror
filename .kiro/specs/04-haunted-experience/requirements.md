@@ -44,8 +44,9 @@ claims about features available in the current application.
 10. Enforce event durations, cooldowns, intensity and simultaneous-layer limits.
     Avoid consecutive repeats when eligible alternatives exist. An empty set
     shall yield a neutral reflection, not an error or unbounded retry loop.
-11. Place localized effects using normalized motion coordinates transformed
-    consistently with the displayed frame. Do not claim face alignment.
+11. Place motion-driven effects using normalized motion coordinates transformed
+    consistently with the displayed frame. Motion-derived positions shall not
+    be described as head or face alignment.
 12. The director shall require no downloaded model, server, GPU or additional
     worker pool. Use the same policy in native and WASM applications.
 
