@@ -11,8 +11,10 @@ with X11. Browser processing runs locally through WebAssembly and Canvas.
 ## Foundation
 
 The browser supports Mirror, Spectral Mirror and Cursed Portrait, using shared
-Rust grayscale, Sobel and Bayer processing. Choose a webcam or a generated
-sample scene. Camera access requires a button click; frames stay on your device.
+Rust grayscale, Sobel and Bayer processing. Combine any palette with delayed
+reflection and ghost trails, or choose a named combination. Choose a webcam
+or an original generated visitor scene, then use Full screen for an immersive
+view. Camera access requires a button click; frames stay on your device.
 The native X11 application renders a synthetic frame. Native camera capture
 and interaction detection remain separate work. Artwork is illustrative.
 

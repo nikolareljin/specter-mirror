@@ -5,10 +5,12 @@ use std::fmt;
 mod dither;
 mod grayscale;
 mod sobel;
+mod temporal;
 
 pub use dither::bayer_dither_gray8;
 pub use grayscale::grayscale_rgb24;
 pub use sobel::sobel_l1;
+pub use temporal::{TemporalError, TemporalHistory, TemporalOptions};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrameError {

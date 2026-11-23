@@ -27,24 +27,48 @@ All modes mirror the image horizontally once and return opaque RGBA.
   to bone and dark pixels to midnight, blended with the original by intensity.
 Blend: `(original * (255 - i) + processed * i + 127) / 255`.
 
+## Dynamic reflection
+
+Reflection delay (0..600 ms) and ghost trails (0..100%) work independently or
+together with every palette. Restless Reflection, Ghost Trails, Cursed Glass
+and Clear Reflection set these controls; Custom keeps your chosen values.
+Temporal processing runs on raw RGBA before the selected palette and single
+horizontal reflection. Reduced motion disables both temporal layers while
+preserving the requested settings for later restoration.
+
+History samples at most once per 100 ms into one bounded ring. At 320 x 240
+the ring uses 2,457,600 pixel bytes; it never exceeds 4 MiB or eight frames.
+The adapter also holds one reusable RGBA working frame and copies output at
+the WASM boundary. These bounds are not a total browser RAM measurement.
+Short or sparse history uses the oldest available sample, so the requested
+delay is not guaranteed during warm-up. Changing temporal settings, stopping
+or switching sources clears history. Invalid frames and timestamps are rejected.
+
 ## Sources
 - Start camera requests video only after you press the button, preferring a
   front-facing device at 320 x 240. The image is center-cropped to 4:3.
-- Use sample scene needs no permission. It is a deterministic scene of moving
-  contours drawn on an offscreen canvas in the page, then passed through the
+- Use sample scene needs no permission. An original generated visitor enters,
+  gestures, holds still and leaves on an 18-second loop, then passes through the
   same WASM path. It is not webcam footage or a recording. With reduced motion
   enabled it is static.
 - Stop, switching sources, `pagehide` and camera track loss stop all tracks,
   cancel the frame loop and free the engine. A camera permission result that
   arrives after Stop or a source switch is stopped immediately.
 
+Full screen fills the display with a centered cover crop while keeping the
+processing size at 320 x 240. Press Escape or Exit full screen to return;
+Stop mirror also releases the camera. Source changes, errors and pagehide
+close the owned fullscreen view. If the browser lacks fullscreen support or
+rejects the request, the mirror continues in the page. Fullscreen requests
+require a button click and never request camera access by themselves.
+
 The page reports capture, Rust/WASM and draw times separately, plus a
 measured frame rate over recent frames. These are readings from the current
 browser, not performance claims.
 
 ## Status
-Camera access over HTTPS, other browsers and deployment still need manual
-verification. The camera requires a secure context (HTTPS or localhost).
+Physical webcam behavior and other browsers still require manual verification.
+The camera requires a secure context (HTTPS or localhost).
 GitHub Pages retains `/specter-mirror/` for direct About navigation and asset
 URLs. The Pages workflow validates pull requests without uploading or deploying.
 Only verified `main` builds publish through `ci-helpers@production`. Build jobs

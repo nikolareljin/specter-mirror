@@ -34,6 +34,8 @@ export interface StreamLike {
 }
 export interface EngineLike {
   process_rgba(input: Uint8Array, mode: number, intensity: number): Uint8Array;
+  configure_temporal(delayMs: number, trailStrength: number): void;
+  process_timed_rgba(input: Uint8Array, mode: number, intensity: number, elapsedMs: number): Uint8Array;
   free(): void;
 }
 
@@ -96,6 +98,9 @@ export class MirrorController {
   private frameTimes: number[] = [];
   private mode = 1;
   private intensity = 200;
+  private delayMs = 0;
+  private trailStrength = 0;
+  private reducedMotion = false;
 
   constructor(deps: MirrorDeps, onStatus: (status: MirrorStatus) => void) {
     this.deps = deps;
@@ -109,6 +114,32 @@ export class MirrorController {
 
   setIntensity(intensity: number): void {
     this.intensity = Math.max(0, Math.min(255, Math.round(intensity)));
+  }
+
+  setTemporal(delayMs: number, trailStrength: number): void {
+    if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > 600
+      || !Number.isInteger(trailStrength) || trailStrength < 0 || trailStrength > 255) return;
+    if (delayMs === this.delayMs && trailStrength === this.trailStrength) return;
+    this.delayMs = delayMs;
+    this.trailStrength = trailStrength;
+    this.configureTemporal();
+  }
+
+  setReducedMotion(reduced: boolean): void {
+    if (reduced === this.reducedMotion) return;
+    this.reducedMotion = reduced;
+    this.configureTemporal();
+  }
+
+  private configureTemporal(): void {
+    try {
+      this.engine?.configure_temporal(
+        this.reducedMotion ? 0 : this.delayMs,
+        this.reducedMotion ? 0 : this.trailStrength,
+      );
+    } catch {
+      this.fail('The reflection settings could not be applied. Try starting the mirror again.');
+    }
   }
 
   getState(): MirrorState {
@@ -147,6 +178,8 @@ export class MirrorController {
         return;
       }
       this.engine = engine;
+      engine.configure_temporal(this.reducedMotion ? 0 : this.delayMs,
+        this.reducedMotion ? 0 : this.trailStrength);
       await this.deps.attachStream(stream);
       if (epoch !== this.epoch) return;
     } catch (error) {
@@ -173,6 +206,8 @@ export class MirrorController {
         return;
       }
       this.engine = engine;
+      engine.configure_temporal(this.reducedMotion ? 0 : this.delayMs,
+        this.reducedMotion ? 0 : this.trailStrength);
     } catch (error) {
       if (epoch === this.epoch) {
         this.fail(
@@ -236,7 +271,8 @@ export class MirrorController {
       const t1 = this.deps.now();
       captureMs = t1 - t0;
       if (frame) {
-        const output = this.engine.process_rgba(frame, this.mode, this.intensity);
+        const output = this.engine.process_timed_rgba(frame, this.mode, this.intensity,
+          Math.floor(t0 - this.startedAt));
         const t2 = this.deps.now();
         processMs = t2 - t1;
         this.deps.render(output);

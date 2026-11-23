@@ -1,12 +1,14 @@
 /// <reference lib="esnext.disposable" />
 import './style.css';
+import './fullscreen.css';
 import mirrorArtwork from '../../assets/illustrations/antique-mirror.svg';
+import { drawSampleScene } from './sample';
+import { FullscreenSession } from './fullscreen';
 import {
   CAMERA_CONSTRAINTS,
   FRAME_HEIGHT,
   FRAME_WIDTH,
   MirrorController,
-  samplePhase,
   type EngineLike,
   type MirrorStatus,
   type SourceKind,
@@ -45,43 +47,6 @@ function loadWasm(): Promise<WasmModule> {
   return wasmReady;
 }
 
-function drawSampleScene(ctx: CanvasRenderingContext2D, w: number, h: number, phase: number) {
-  const bg = ctx.createLinearGradient(0, 0, w, h);
-  bg.addColorStop(0, '#080d14');
-  bg.addColorStop(1, '#151d27');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  // Asymmetric moving contours: the left side is busier so mirroring is visible.
-  const cx = w * 0.36;
-  const cy = h * 0.52;
-  for (let k = 1; k <= 6; k += 1) {
-    const wobble = Math.sin(phase * 2 + k * 0.9) * 4;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 14 * k + wobble, 11 * k - wobble * 0.5, 0, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = k % 2 ? '#e5dfd1' : '#8d99a6';
-    ctx.stroke();
-  }
-  const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 30);
-  glow.addColorStop(0, '#e5dfd1');
-  glow.addColorStop(1, '#3a4452');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(cx, cy, 26, 0, Math.PI * 2);
-  ctx.fill();
-  // A drifting disc and a slanted bar give clear edges on the right.
-  ctx.fillStyle = '#9fb0bb';
-  ctx.beginPath();
-  ctx.arc(w * 0.76 + Math.cos(phase) * 28, h * 0.3 + Math.sin(phase) * 14, 22, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.save();
-  ctx.translate(w * 0.72, h * 0.78);
-  ctx.rotate(-0.35 + Math.sin(phase) * 0.12);
-  ctx.fillStyle = '#6f7d8a';
-  ctx.fillRect(-48, -7, 96, 14);
-  ctx.restore();
-}
-
 function setupMirror(canvas: HTMLCanvasElement) {
   const need = <T extends HTMLElement>(selector: string): T => {
     const el = document.querySelector<T>(selector);
@@ -100,8 +65,33 @@ function setupMirror(canvas: HTMLCanvasElement) {
   const effect = need<HTMLSelectElement>('#effect');
   const intensity = need<HTMLInputElement>('#intensity');
   const intensityValue = need<HTMLOutputElement>('#intensity-value');
+  const delay = need<HTMLInputElement>('#delay');
+  const delayValue = need<HTMLOutputElement>('#delay-value');
+  const trails = need<HTMLInputElement>('#trails');
+  const trailsValue = need<HTMLOutputElement>('#trails-value');
+  const profile = need<HTMLSelectElement>('#haunt-profile');
+  const temporalNote = need<HTMLElement>('#temporal-note');
   const statusEl = need<HTMLElement>('#status');
   const metrics = need<HTMLElement>('#metrics');
+  const fullscreenButton = need<HTMLButtonElement>('#fullscreen');
+  const exitFullscreen = need<HTMLButtonElement>('#exit-fullscreen');
+  const fullscreenStop = need<HTMLButtonElement>('#stop-fullscreen');
+  const fullscreenNote = need<HTMLElement>('#fullscreen-note');
+  const fullscreenSupported = typeof figure.requestFullscreen === 'function';
+  let live = false;
+  let fullscreenBusy = false;
+  const fullscreen = new FullscreenSession({
+    supported: () => fullscreenSupported,
+    active: () => document.fullscreenElement === figure,
+    request: () => figure.requestFullscreen(),
+    exit: () => document.exitFullscreen(),
+  });
+
+  function updateFullscreenControls() {
+    fullscreenButton.disabled = !live || fullscreenBusy || !fullscreenSupported
+      || document.fullscreenElement === figure;
+  }
+  if (!fullscreenSupported) fullscreenNote.textContent = 'Full screen is unavailable in this browser.';
 
   const view = canvas.getContext('2d');
   const scratch = document.createElement('canvas');
@@ -145,7 +135,8 @@ function setupMirror(canvas: HTMLCanvasElement) {
             scratchCtx,
             FRAME_WIDTH,
             FRAME_HEIGHT,
-            samplePhase(elapsedMs, reducedMotion()),
+            elapsedMs,
+            reducedMotion(),
           );
         } else {
           if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
@@ -178,10 +169,14 @@ function setupMirror(canvas: HTMLCanvasElement) {
       shownMessage = status.message;
       statusEl.textContent = status.message;
     }
-    const live = status.state === 'camera' || status.state === 'sample';
+    const wasLive = live;
+    live = status.state === 'camera' || status.state === 'sample';
+    if (wasLive && !live) void fullscreen.stop();
+    updateFullscreenControls();
     frame.hidden = !live;
     art.hidden = live;
     figure.classList.toggle('live', live);
+    figure.closest('.stage')?.classList.toggle('mirror-running', live);
     stop.disabled = status.state === 'idle' || status.state === 'error';
     if (live) {
       captionTitle.textContent = status.state === 'camera' ? 'Live camera' : 'Generated scene';
@@ -203,18 +198,59 @@ function setupMirror(canvas: HTMLCanvasElement) {
       `Rust/WASM ${status.processMs.toFixed(1)} ms | draw ${status.renderMs?.toFixed(1)} ms`;
   }
 
-  const applyControls = () => {
+  const applyControls = (custom = true) => {
+    if (custom) profile.value = 'custom';
     controller.setMode(Number(effect.value));
     const percent = Number(intensity.value);
     intensityValue.textContent = `${percent}%`;
     controller.setIntensity((percent * 255) / 100);
+    const delayMs = Number(delay.value);
+    const trailPercent = Number(trails.value);
+    controller.setReducedMotion(reducedMotion());
+    controller.setTemporal(delayMs, Math.round(trailPercent * 255 / 100));
+    delayValue.textContent = `${delayMs} ms`;
+    trailsValue.textContent = `${trailPercent}%`;
+    temporalNote.textContent = reducedMotion()
+      ? 'Reduced motion: delay and ghost trails are off. The reflection stays live.'
+      : 'Delay and trails combine with any reflection. History warms up as frames arrive.';
   };
-  effect.addEventListener('change', applyControls);
-  intensity.addEventListener('input', applyControls);
-  applyControls();
+  effect.addEventListener('change', () => applyControls());
+  intensity.addEventListener('input', () => applyControls());
+  delay.addEventListener('input', () => applyControls());
+  trails.addEventListener('input', () => applyControls());
+  reduced?.addEventListener('change', () => applyControls(false));
+  profile.addEventListener('change', () => {
+    const presets: Record<string, [string, string, string, string]> = {
+      restless: ['1', '55', '250', '45'],
+      trails: ['1', '70', '0', '65'],
+      portrait: ['2', '75', '300', '35'],
+      clear: ['0', '0', '0', '0'],
+    };
+    const settings = presets[profile.value];
+    if (settings) [effect.value, intensity.value, delay.value, trails.value] = settings;
+    applyControls(false);
+  });
+  applyControls(false);
 
   startCamera.addEventListener('click', () => void controller.startCamera());
   startSample.addEventListener('click', () => void controller.startSample());
   stop.addEventListener('click', () => controller.stop());
-  window.addEventListener('pagehide', () => controller.dispose());
+  fullscreenStop.addEventListener('click', () => controller.stop());
+  exitFullscreen.addEventListener('click', () => void fullscreen.stop());
+  fullscreenButton.addEventListener('click', async () => {
+    if (!live || fullscreenBusy) return;
+    fullscreenBusy = true;
+    updateFullscreenControls();
+    const entered = await fullscreen.enter();
+    fullscreenBusy = false;
+    if (live) fullscreenNote.textContent = entered
+      ? 'Press Escape or Exit full screen to return. Stop mirror releases the camera.'
+      : 'Full screen could not be opened. The mirror can continue in this page.';
+    updateFullscreenControls();
+  });
+  document.addEventListener('fullscreenchange', updateFullscreenControls);
+  window.addEventListener('pagehide', () => {
+    controller.dispose();
+    void fullscreen.stop();
+  });
 }
