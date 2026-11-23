@@ -15,7 +15,7 @@
 #   deps-check    List duplicate packages in the locked dependency graph.
 #   docs-check    Check documentation links and print a review reminder.
 #   native-proof  Render a synthetic frame in an X11 window, then exit.
-#   native        Keep the synthetic frame window open until Escape.
+#   native        Animate the generated native sample until Escape.
 #   -h, --help    Print this header without checking or building anything.
 # REQUIREMENTS:
 #   Rust commands need rustup and the toolchain in rust-toolchain.toml.
