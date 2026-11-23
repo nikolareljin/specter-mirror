@@ -28,6 +28,13 @@ used by the browser controls. Review adds fallible storage reservation and an
 allocation-capacity error test. The session reported manual checks and no hook
 execution; no physical hardware or performance measurement is established.
 
+The motion/state task in `04-haunted-experience` adds strict changed-pixel
+thresholds, normalized centroids, hysteresis and the five-state interaction.
+Its tests cover literal timelines, validation order, reset, error preservation
+and bounded generated sequences. The session reported manual commands and no
+hook execution. Core APIs alone do not establish browser interaction, head
+localization, physical webcam support or measured target performance.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's
