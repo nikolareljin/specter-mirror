@@ -379,6 +379,7 @@ name = "spook-web"
 version = "0.1.0"
 dependencies = [
  "spook-core",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -14,6 +14,13 @@ The second task in `01-core-engine` was executed in a Kiro session and reviewed:
 converted the fixture to one plain PGM image so standard readers can open it.
 Core tests, formatting, clippy, WASM and i686 checks cover this task.
 
+The first task in `03-web-demo` now has checked RGBA interfaces, bindings and
+browser processing. Tests cover mode output, orientation, input errors,
+camera lifecycle and source switching. Review added regression cases for
+unsaturated edges and camera loss during engine initialization. Chromium
+verification used the generated scene and simulated camera input, not a
+physical webcam. Hook execution has not been verified for this task.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's

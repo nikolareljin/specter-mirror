@@ -5,6 +5,8 @@
 | minifb | 0.29.0, Cargo.lock | X11 software window | MIT OR Apache-2.0 |
 | Vite | 8.3.8, web/package-lock.json | Frontend build | MIT |
 | TypeScript | 7.0.2, web/package-lock.json | Frontend type checking | Apache-2.0 |
+| wasm-bindgen | 0.2.130, Cargo.lock | Rust/JavaScript bindings for the WASM mirror engine | MIT OR Apache-2.0 |
+| wasm-pack | 0.15.1, development tool | Builds web/generated bindings; not a runtime dependency | MIT OR Apache-2.0 |
 | ci-helpers | production | Reusable build, test and security workflows | MIT |
 | script-helpers | Installed development tooling | Local publication hook installation | MIT |
 | antiX | 26.1, 32-bit full image | Appliance base and official interactive installer | Distribution packages retain their own licenses |

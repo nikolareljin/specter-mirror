@@ -6,14 +6,15 @@ Resurrecting forgotten computers into haunted interactive mirrors.
 
 SpecterMirror is a CPU-only haunted mirror for older Linux laptops, with a
 shared Rust engine and a browser interface. The native target is 32-bit antiX
-with X11. Browser processing will run locally through WebAssembly and Canvas.
+with X11. Browser processing runs locally through WebAssembly and Canvas.
 
 ## Foundation
 
-This revision validates borrowed RGB24 frames, mirrors synthetic pixels,
-opens an X11 software window, and checks the portable crates for WASM.
-Camera capture, haunted effects, interaction detection and browser WASM
-bindings are not implemented yet. Artwork is illustrative, not camera output.
+The browser supports Mirror, Spectral Mirror and Cursed Portrait, using shared
+Rust grayscale, Sobel and Bayer processing. Choose a webcam or a generated
+sample scene. Camera access requires a button click; frames stay on your device.
+The native X11 application renders a synthetic frame. Native camera capture
+and interaction detection remain separate work. Artwork is illustrative.
 
 ```bash
 ./dev --help
@@ -23,6 +24,7 @@ rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy --t
 ./check
 cd web
 npm ci
+cargo install wasm-pack --version 0.15.1 --locked
 npm run build
 ```
 
@@ -35,7 +37,8 @@ The X11 proof needs a display; use `xvfb-run -a ./dev native-proof` in CI.
 Run `./demo native` to keep the synthetic Rust image open until Escape.
 Run `./demo web` to preview the interface at
 http://127.0.0.1:5173/specter-mirror/. Use `./demo web --port 5179` if the
-default port is occupied. Install web dependencies with `npm ci --prefix web`.
+default port is occupied. Install web dependencies with `npm ci --prefix web`
+and wasm-pack with the command above. The helper builds WASM before serving.
 
 `./demo vm` forwards the verified ISO and guest options to the
 [QEMU runner](vm/README.md). It creates a disposable virtual disk and does not
@@ -52,13 +55,13 @@ provision the development workstation. Run `./demo --help` for complete examples
 - [Reused components and licenses](docs/DEPENDENCIES.md).
 
 The planned demo destination is https://nikolareljin.github.io/specter-mirror/.
-This revision does not deploy a working camera demo. The web source includes
+Deployment is not enabled in this revision. The web source includes
 a matching About page with links to selected public projects.
 
 ## Next steps
 
-Build real camera filters for the native laptop and browser, then extend the
-engine into a modular Smart Mirror. Halloween is the first filter theme.
+Connect the native laptop camera and add more effects, then extend the engine
+into a modular Smart Mirror. Halloween is the first filter theme.
 Live processing and physical hardware verification must precede release claims.
 
 Original source and SVG artwork use [Apache-2.0](LICENSE). Third-party notices

@@ -3,13 +3,16 @@
 ```bash
 rustup target add --toolchain 1.99.1 wasm32-unknown-unknown
 ./dev wasm-check
+cargo install wasm-pack --version 0.15.1 --locked
+npm ci --prefix web
+npm --prefix web run build
 ```
 
-This checks the shared engine and binding-crate scaffold for the WASM target.
-It does not create a JavaScript interface or prove browser execution.
-Actual bindings and wasm-pack integration must preserve the shared core's
-buffer contract and return errors without panicking on malformed input.
+`wasm-check` checks compilation only. The npm build runs wasm-pack, creates
+JavaScript bindings in `web/generated/`, type-checks the frontend and builds
+both HTML pages and their WASM assets into `web/dist/`. Generated output is
+ignored. Add the standard Cargo bin directory to PATH if wasm-pack is not found.
 
-The Vite shell builds separately with `cd web && npm ci && npm run build`.
-The project base path is `/specter-mirror/`. Pages deployment is enabled only
-after working WASM, permission handling and sample fallback are verified.
+Run `./demo web` for the local browser demo. See [web interface](WEB_DEMO.md)
+for modes and lifecycle behavior. The project base path is `/specter-mirror/`.
+Pages deployment remains a separate verification step.
