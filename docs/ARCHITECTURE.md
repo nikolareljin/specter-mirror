@@ -1,12 +1,15 @@
 # Architecture
 
 `spook-core` owns portable frame validation and processing. `spook-kiosk`
-owns Linux camera/window integration. `spook-web` will expose the engine to
+owns Linux camera/window integration. `spook-web` exposes the engine to
 the TypeScript frontend. The core cannot import window, camera or OS APIs.
 
 Input -> validation -> normalization -> downscaling -> grayscale -> motion
 analysis -> effects -> overlays -> palette -> display scaling -> output.
-Only RGB24 validation and mirrored packed RGB output exist in this revision.
+The current core implements RGB24 validation, grayscale conversion, Sobel edges,
+Bayer dithering and mirrored packed RGB output. The WASM adapter provides three
+manual modes and checked RGBA processing; motion and temporal effects remain
+future work described in the [haunted interaction design](../.kiro/specs/04-haunted-experience/design.md).
 
 `RgbFrame` borrows pixels. Width and height are nonzero. Stride is bytes per
 row and must be at least `width * 3`. The last row need not include padding.
