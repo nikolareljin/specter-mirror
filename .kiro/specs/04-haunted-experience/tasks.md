@@ -1,7 +1,7 @@
 # Haunted interaction tasks
 
 Execute one bounded task at a time. Check off work only after implementation
-and verification; this list does not record completed execution.
+and verification. Keep execution evidence in `docs/KIRO-DEVELOPMENT.md`.
 
 - [ ] Add validated motion observations with normalized changed-pixel location,
   threshold hysteresis, stillness grace and a clock-driven five-state machine.
