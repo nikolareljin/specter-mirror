@@ -33,6 +33,7 @@
 #   xvfb-run -a ./dev native-proof
 # EXIT_CODES:
 #   0  Help printed or the requested command succeeded.
+#   1  At least one all-test suite failed.
 #   2  Unknown command or too many arguments.
 #   Other nonzero values are propagated from the selected tool.
 
