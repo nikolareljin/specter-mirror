@@ -33,8 +33,13 @@ bounded intervals rather than every display frame. Select the nearest usable
 past sample and define warm-up behavior explicitly. Never make a ring per
 effect or retain camera recordings. Clear the ring on resize/source changes.
 
-Apparitions use original procedural geometry. A motion centroid can influence
-position, but no skull-to-face registration is assumed. Frost and vignette are
+Apparitions use original procedural geometry. Motion-positioned apparitions
+are distinct from optional head-aligned skulls. Head alignment requires a
+validated localizer observation (source bounds, confidence and timestamp),
+not a motion centroid. Suppress stale or uncertain observations and transform
+bounds through the same crop/reflection as pixels. Keep localization optional
+and outside the frame hot loop; select its backend only after target testing.
+No identity recognition is required. Frost and vignette are
 cheap spatial treatments with bounded animation; distortion uses integer
 sampling and clamps every source coordinate. Compose into caller-owned buffers.
 
@@ -45,6 +50,13 @@ motion observations so state transitions can be tested without sleeping.
 Clamp or reject regressing time consistently before mutation. Large time jumps
 must not require a loop for every skipped frame. Validate policy configuration
 once; invalid frame input must not advance timers or modify output/history.
+
+Automatic mode starts with zero effect weights and a neutral live introduction.
+The state machine supplies phase and elapsed time; a separate bounded envelope
+ramps intensity, rather than enabling full strength at a transition. Recovery
+returns smoothly to clear. Recipes bound skull alpha and event/cooldown/fade
+durations. Ghosts sample earlier unmodified camera frames from the same ring.
+Manual modes remain under direct user control.
 
 The director filters candidates by state, preferences, quality and cooldown,
 then scores them using motion, stillness, recent events and timing. Use fixed

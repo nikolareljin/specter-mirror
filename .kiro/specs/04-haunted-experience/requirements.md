@@ -14,8 +14,11 @@ claims about features available in the current application.
 3. Stop, camera loss and source changes shall clear temporal state, reset the
    interaction and cancel pending visual/audio events. Backgrounding shall
    stop audio and suspend processing; resuming shall reset temporal state.
-4. The experience shall begin with a mostly normal reflection, build tension,
-   run bounded events and recover. No event shall bypass the user's settings.
+4. Automatic mode shall begin with a clear live reflection and zero effect
+   intensity, hold a configurable neutral introduction, gradually increase
+   eligible effects, run bounded events and fade back to clear on recovery.
+   Manual modes remain explicit overrides. Test the introduction and ramp
+   boundaries with injected time. No event shall bypass the user's settings.
 
 ## Independent effects and recipes
 
@@ -41,8 +44,9 @@ claims about features available in the current application.
 10. Enforce event durations, cooldowns, intensity and simultaneous-layer limits.
     Avoid consecutive repeats when eligible alternatives exist. An empty set
     shall yield a neutral reflection, not an error or unbounded retry loop.
-11. Place localized effects using normalized motion coordinates transformed
-    consistently with the displayed frame. Do not claim face alignment.
+11. Place motion-driven effects using normalized motion coordinates transformed
+    consistently with the displayed frame. Motion-derived positions shall not
+    be described as head or face alignment.
 12. The director shall require no downloaded model, server, GPU or additional
     worker pool. Use the same policy in native and WASM applications.
 
@@ -109,3 +113,23 @@ claims about features available in the current application.
 28. Record host, WASM and i686 compilation separately from runtime evidence.
     Measure a 2 GB antiX guest and the physical laptop before claiming target
     compatibility, frame rate, RAM usage or webcam support.
+
+## Movement echoes and head-aligned apparitions
+
+29. Ghost trails shall show translucent echoes of earlier unmodified camera
+    frames from the shared bounded ring. Preserve the live reflection and
+    avoid recursive processed-frame feedback or substitute stock images.
+30. An optional skull event shall fade translucent procedural geometry over
+    a localized head. Accept validated source-space bounds, confidence and
+    observation age separately from motion. Suppress uncertain or stale
+    placement; a motion centroid shall not be represented as head tracking.
+31. Bound skull opacity, fade duration, event duration and cooldown in the
+    recipe. Verify gradual appearance/disappearance and visibility of the
+    underlying face. Source loss and reduced motion shall suppress events.
+32. Head localization shall be optional, local and CPU-only. Select a backend
+    only after license, i686/WASM feasibility and measured target cost review.
+    Sparse detection and budget overruns shall never block the mirror; delay
+    and trails shall remain available without head localization or identity
+    recognition. Test off-center bounds, occlusion, stale observations,
+    multiple candidates and matching crop/mirror transforms. Verify physical
+    alignment separately on the actual webcam.
