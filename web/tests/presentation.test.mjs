@@ -10,7 +10,7 @@ test('generated visitor enters, moves, stays still and leaves', () => {
   assert.deepEqual(samplePose(7_000), samplePose(10_999));
   assert.ok(samplePose(13_000).x > samplePose(11_000).x);
   assert.equal(samplePose(14_000).visible, false);
-  assert.deepEqual(samplePose(0), samplePose(18_000));
+  assert.deepEqual(samplePose(0), samplePose(28_000));
 });
 
 test('sample replay is deterministic, bounded and static with reduced motion', () => {

@@ -3,6 +3,10 @@
 The browser processes camera or generated visitor frames with shared Rust code.
 Spectral edges and portrait dithering can be combined with reflection delay
 and ghost trails. Temporal processing precedes palettes and mirrors once.
+Automatic haunting starts clear and gradually increases these layers using
+the shared motion/state progression. Manual controls remain available when
+automatic mode is disabled. Head localization and skull overlays are not
+provided by this progression.
 
 | Effect | Current behavior |
 | --- | --- |

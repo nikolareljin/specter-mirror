@@ -1,9 +1,14 @@
 //! Host-testable browser frame engine built on the shared spook-core functions.
 use spook_core::{
-    bayer_dither_gray8, grayscale_rgb24, sobel_l1, RgbFrame, TemporalHistory, TemporalOptions,
+    bayer_dither_gray8, grayscale_rgb24, sobel_l1, HauntState, RgbFrame, TemporalHistory,
+    TemporalOptions, HAUNT_FULL_STRENGTH,
 };
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::wasm_bindgen;
+
+#[path = "automatic.rs"]
+mod automatic;
+use automatic::Automatic;
 
 pub const MAX_WIDTH: u32 = 640;
 pub const MAX_HEIGHT: u32 = 480;
@@ -36,6 +41,9 @@ pub struct MirrorEngine {
     delay_ms: u16,
     trail_strength: u8,
     last_time_ms: Option<u64>,
+    automatic: Option<Automatic>,
+    automatic_enabled: bool,
+    reduced_motion: bool,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -68,6 +76,9 @@ impl MirrorEngine {
             delay_ms: 0,
             trail_strength: 0,
             last_time_ms: None,
+            automatic: None,
+            automatic_enabled: false,
+            reduced_motion: false,
         })
     }
 
@@ -96,15 +107,8 @@ impl MirrorEngine {
         if delay_ms == self.delay_ms && trail_strength == self.trail_strength {
             return Ok(());
         }
-        if (delay_ms > 0 || trail_strength > 0) && self.temporal.is_none() {
-            let history =
-                TemporalHistory::new(self.width, self.height).map_err(|e| e.to_string())?;
-            let mut work = Vec::new();
-            work.try_reserve_exact(self.gray.len() * 4)
-                .map_err(|_| "temporal working-frame allocation failed")?;
-            work.resize(self.gray.len() * 4, 0);
-            self.work = work;
-            self.temporal = Some(history);
+        if delay_ms > 0 || trail_strength > 0 {
+            self.ensure_temporal()?;
         }
         self.delay_ms = delay_ms;
         self.trail_strength = trail_strength;
@@ -118,6 +122,111 @@ impl MirrorEngine {
             history.reset();
         }
         self.last_time_ms = None;
+        if let Some(automatic) = self.automatic.as_mut() {
+            automatic.reset();
+        }
+    }
+
+    /// Changes automatic/reduced-motion preferences and resets the session.
+    /// Storage is allocated here, not while processing. Identical settings preserve history.
+    pub fn configure_automatic(
+        &mut self,
+        enabled: bool,
+        reduced_motion: bool,
+    ) -> Result<(), String> {
+        if enabled == self.automatic_enabled && reduced_motion == self.reduced_motion {
+            return Ok(());
+        }
+        if enabled {
+            let automatic = if self.automatic.is_none() {
+                Some(Automatic::new(self.gray.len())?)
+            } else {
+                None
+            };
+            self.ensure_temporal()?;
+            if automatic.is_some() {
+                self.automatic = automatic;
+            }
+        }
+        self.automatic_enabled = enabled;
+        self.reduced_motion = reduced_motion;
+        self.reset_temporal();
+        Ok(())
+    }
+
+    /// Uses raw-frame motion and the shared progression before temporal/palette processing.
+    pub fn process_automatic_rgba(
+        &mut self,
+        input: &[u8],
+        elapsed_ms: f64,
+    ) -> Result<Vec<u8>, String> {
+        let expected = self.validate(input, MODE_MIRROR)?;
+        let now = self.validate_time(elapsed_ms)?;
+        if !self.automatic_enabled {
+            return Err("automatic reflection is disabled".into());
+        }
+        fill_rgb(&mut self.rgb, input);
+        let frame = RgbFrame::new(self.width, self.height, self.width * 3, &self.rgb)
+            .map_err(|e| e.to_string())?;
+        grayscale_rgb24(&frame, &mut self.gray).map_err(|e| e.to_string())?;
+        let automatic = self
+            .automatic
+            .as_mut()
+            .ok_or("automatic reflection is not configured")?;
+        let level = automatic.update(
+            &self.gray,
+            self.width,
+            self.height,
+            now,
+            self.reduced_motion,
+        )?;
+        let scale =
+            |maximum: u32| maximum * u32::from(level.strength) / u32::from(HAUNT_FULL_STRENGTH);
+        let options = TemporalOptions {
+            delay_ms: scale(250) as u16,
+            trail_strength: scale(120) as u8,
+        };
+        let history = self
+            .temporal
+            .as_mut()
+            .ok_or("temporal history is not configured")?;
+        history
+            .process(input, &mut self.work, now, options)
+            .map_err(|e| e.to_string())?;
+        if options.delay_ms > 0 || options.trail_strength > 0 {
+            fill_rgb(&mut self.rgb, &self.work);
+        }
+        self.last_time_ms = Some(now);
+        let intensity = scale(140) as u8;
+        let mode = if intensity == 0 {
+            MODE_MIRROR
+        } else {
+            MODE_SPECTRAL
+        };
+        self.render(expected, mode, intensity)
+    }
+
+    /// State codes: idle=0, presence=1, transforming=2, haunted=3, recovering=4.
+    pub fn haunt_state(&self) -> u8 {
+        match self
+            .automatic
+            .as_ref()
+            .map(|a| a.level.state)
+            .unwrap_or(HauntState::Idle)
+        {
+            HauntState::Idle => 0,
+            HauntState::PresenceDetected => 1,
+            HauntState::Transforming => 2,
+            HauntState::Haunted => 3,
+            HauntState::Recovering => 4,
+        }
+    }
+
+    pub fn haunt_strength(&self) -> u16 {
+        self.automatic.as_ref().map_or(0, |a| a.level.strength)
+    }
+    pub fn motion_activity(&self) -> u16 {
+        self.automatic.as_ref().map_or(0, |a| a.level.activity)
     }
 
     /// Like `process_rgba`, but applies delayed reflection and ghost trails to
@@ -132,16 +241,7 @@ impl MirrorEngine {
         elapsed_ms: f64,
     ) -> Result<Vec<u8>, String> {
         let expected = self.validate(input, mode)?;
-        if !elapsed_ms.is_finite()
-            || elapsed_ms.fract() != 0.0
-            || !(0.0..=MAX_SAFE_MS).contains(&elapsed_ms)
-        {
-            return Err("elapsed time must be an integer from 0 to 9007199254740991".into());
-        }
-        let now = elapsed_ms as u64;
-        if self.last_time_ms.is_some_and(|last| now < last) {
-            return Err("elapsed time must not decrease".into());
-        }
+        let now = self.validate_time(elapsed_ms)?;
         match self.temporal.as_mut() {
             Some(history) if self.delay_ms > 0 || self.trail_strength > 0 => {
                 let options = TemporalOptions {
@@ -161,6 +261,33 @@ impl MirrorEngine {
 }
 
 impl MirrorEngine {
+    fn ensure_temporal(&mut self) -> Result<(), String> {
+        if self.temporal.is_none() {
+            let history =
+                TemporalHistory::new(self.width, self.height).map_err(|e| e.to_string())?;
+            let mut work = Vec::new();
+            work.try_reserve_exact(self.gray.len() * 4)
+                .map_err(|_| "temporal working-frame allocation failed")?;
+            work.resize(self.gray.len() * 4, 0);
+            self.work = work;
+            self.temporal = Some(history);
+        }
+        Ok(())
+    }
+
+    fn validate_time(&self, elapsed_ms: f64) -> Result<u64, String> {
+        if !elapsed_ms.is_finite()
+            || elapsed_ms.fract() != 0.0
+            || !(0.0..=MAX_SAFE_MS).contains(&elapsed_ms)
+        {
+            return Err("elapsed time must be an integer from 0 to 9007199254740991".into());
+        }
+        let now = elapsed_ms as u64;
+        if self.last_time_ms.is_some_and(|last| now < last) {
+            return Err("elapsed time must not decrease".into());
+        }
+        Ok(now)
+    }
     /// Checks mode and exact RGBA length; returns the expected byte count.
     fn validate(&self, input: &[u8], mode: u8) -> Result<usize, String> {
         if mode > MODE_PORTRAIT {

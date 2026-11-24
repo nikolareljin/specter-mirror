@@ -29,6 +29,28 @@ Blend: `(original * (255 - i) + processed * i + 127) / 255`.
 
 ## Dynamic reflection
 
+Automatic haunting is enabled initially. The shared Rust progression holds a
+clear reflection for five seconds from the first frame, then builds temporal
+and spectral intensity over six seconds when motion has established interaction.
+Stillness gets a ten-second grace period before a fade to clear taking up to
+three seconds, depending on current intensity.
+Renewed motion during recovery keeps the current intensity instead of jumping.
+Motion measures changed pixels, not a face or a person's presence; uniform
+lighting changes can also trigger it. This first automatic treatment is fixed;
+seeded event selection and head-aligned geometry remain separate requirements.
+
+Turn automatic haunting off for manual settings. Its preferences, source
+changes and Stop reset interaction/history. Reduced motion keeps automatic
+output clear while natural camera movement stays live. Hiding the page stops
+the mirror and releases the camera; returning requires an explicit Start.
+
+The automatic path compares raw grayscale frames at most every 100 ms, before
+temporal layers or palette processing. It reuses one additional grayscale
+history buffer (76,800 bytes at 320 x 240). Effect weights change without
+clearing the shared frame ring, which stays warm during the clear opening.
+The display shows the current phase and effective intensity. These readings
+are not face detection or performance measurements.
+
 Reflection delay (0..600 ms) and ghost trails (0..100%) work independently or
 together with every palette. Restless Reflection, Ghost Trails, Cursed Glass
 and Clear Reflection set these controls; Custom keeps your chosen values.
@@ -48,9 +70,10 @@ or switching sources clears history. Invalid frames and timestamps are rejected.
 - Start camera requests video only after you press the button, preferring a
   front-facing device at 320 x 240. The image is center-cropped to 4:3.
 - Use sample scene needs no permission. An original generated visitor enters,
-  gestures, holds still and leaves on an 18-second loop, then passes through the
+  gestures, holds still and leaves on a 28-second loop, then passes through the
   same WASM path. It is not webcam footage or a recording. With reduced motion
   enabled it is static.
+  The quiet interval lets automatic mode recover before the next visitor.
 - Stop, switching sources, `pagehide` and camera track loss stop all tracks,
   cancel the frame loop and free the engine. A camera permission result that
   arrives after Stop or a source switch is stopped immediately.

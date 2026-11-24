@@ -70,6 +70,8 @@ function setupMirror(canvas: HTMLCanvasElement) {
   const trails = need<HTMLInputElement>('#trails');
   const trailsValue = need<HTMLOutputElement>('#trails-value');
   const profile = need<HTMLSelectElement>('#haunt-profile');
+  const automatic = need<HTMLInputElement>('#automatic');
+  const haunting = need<HTMLElement>('#haunt-status');
   const temporalNote = need<HTMLElement>('#temporal-note');
   const statusEl = need<HTMLElement>('#status');
   const metrics = need<HTMLElement>('#metrics');
@@ -165,6 +167,8 @@ function setupMirror(canvas: HTMLCanvasElement) {
   );
 
   function showStatus(status: MirrorStatus) {
+    const phase = status.hauntState ?? (automatic.checked ? 'Waiting for a source' : 'Manual reflection');
+    if (haunting.textContent !== phase) haunting.textContent = phase;
     if (status.message !== shownMessage) {
       shownMessage = status.message;
       statusEl.textContent = status.message;
@@ -195,10 +199,13 @@ function setupMirror(canvas: HTMLCanvasElement) {
     const fps = status.fps === null ? 'measuring' : `${status.fps.toFixed(1)} fps`;
     metrics.textContent =
       `${fps} | capture ${status.captureMs?.toFixed(1)} ms | ` +
-      `Rust/WASM ${status.processMs.toFixed(1)} ms | draw ${status.renderMs?.toFixed(1)} ms`;
+      `Rust/WASM ${status.processMs.toFixed(1)} ms | draw ${status.renderMs?.toFixed(1)} ms` +
+      (status.hauntStrength === null ? '' : ` | effect ${Math.round(status.hauntStrength / 60)}%`);
   }
 
   const applyControls = (custom = true) => {
+    controller.setAutomatic(automatic.checked);
+    for (const control of [profile, effect, intensity, delay, trails]) control.disabled = automatic.checked;
     if (custom) profile.value = 'custom';
     controller.setMode(Number(effect.value));
     const percent = Number(intensity.value);
@@ -210,7 +217,9 @@ function setupMirror(canvas: HTMLCanvasElement) {
     controller.setTemporal(delayMs, Math.round(trailPercent * 255 / 100));
     delayValue.textContent = `${delayMs} ms`;
     trailsValue.textContent = `${trailPercent}%`;
-    temporalNote.textContent = reducedMotion()
+    temporalNote.textContent = automatic.checked && !reducedMotion()
+      ? 'Starts clear. Movement gradually wakes the reflection; after stillness, it settles. Manual controls return when automatic haunting is off.'
+      : reducedMotion()
       ? 'Reduced motion: delay and ghost trails are off. The reflection stays live.'
       : 'Delay and trails combine with any reflection. History warms up as frames arrive.';
   };
@@ -219,6 +228,7 @@ function setupMirror(canvas: HTMLCanvasElement) {
   delay.addEventListener('input', () => applyControls());
   trails.addEventListener('input', () => applyControls());
   reduced?.addEventListener('change', () => applyControls(false));
+  automatic.addEventListener('change', () => applyControls(false));
   profile.addEventListener('change', () => {
     const presets: Record<string, [string, string, string, string]> = {
       restless: ['1', '55', '250', '45'],
@@ -252,5 +262,8 @@ function setupMirror(canvas: HTMLCanvasElement) {
   window.addEventListener('pagehide', () => {
     controller.dispose();
     void fullscreen.stop();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) controller.stop();
   });
 }
