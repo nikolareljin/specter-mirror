@@ -1,5 +1,11 @@
 # Architecture
 
+`HauntProgression` in spook-core supplies the automatic intensity envelope on
+top of the shared five-state machine. Its 0..6000 strength is elapsed-time
+based, with a clear introduction and continuous build/recovery. WASM measures
+raw-frame motion at 100 ms intervals, then applies changing temporal weights
+without resetting history. Browser code owns controls and presentation only.
+
 `spook-core` owns portable frame validation and processing. `spook-kiosk`
 owns Linux camera/window integration. `spook-web` exposes the engine to
 the TypeScript frontend. The core cannot import window, camera or OS APIs.

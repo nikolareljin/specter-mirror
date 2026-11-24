@@ -58,6 +58,19 @@ function setup(overrides = {}) {
         freed: 0,
         configured: [],
         timed: [],
+        automatic: [],
+        automaticCalls: [],
+        configure_automatic(enabled, reduced) {
+          if (overrides.configureError) throw new Error('configuration failed');
+          this.automatic.push({ enabled, reduced });
+        },
+        process_automatic_rgba(input, elapsed) {
+          this.automaticCalls.push(elapsed);
+          return this.process_rgba(input, 0, 0);
+        },
+        haunt_state() { return 2; },
+        haunt_strength() { return 1500; },
+        motion_activity() { return 10; },
         configure_temporal(delay, strength) {
           if (overrides.configureError) throw new Error('configuration failed');
           this.configured.push({ delay, strength });
@@ -177,6 +190,47 @@ test('configuration failure cleans up acquired camera and engine', async () => {
   assert.equal(media.track.stopped, 1);
   assert.equal(log.engines[0].freed, 1);
   assert.equal(log.attached, 0);
+});
+
+test('automatic processing reports shared state and switching back restores manual controls', async () => {
+  const { controller, log, statuses, step } = setup();
+  controller.setMode(2);
+  controller.setIntensity(80);
+  controller.setTemporal(300, 100);
+  controller.setAutomatic(true);
+  await controller.startSample();
+  const engine = log.engines[0];
+  assert.deepEqual(engine.automatic, [{ enabled: true, reduced: false }]);
+  assert.deepEqual(engine.configured, []);
+  step();
+  assert.equal(engine.automaticCalls.length, 1);
+  assert.equal(engine.timed.length, 0);
+  assert.equal(last(statuses).hauntState, 'Transforming');
+  assert.equal(last(statuses).hauntStrength, 1500);
+  controller.setAutomatic(false);
+  assert.deepEqual(engine.configured.at(-1), { delay: 300, strength: 100 });
+  step();
+  assert.equal(engine.timed.length, 1);
+  assert.equal(log.calls.at(-1).mode, 2);
+  assert.equal(log.calls.at(-1).intensity, 80);
+  assert.equal(last(statuses).hauntState, null);
+  controller.stop();
+});
+
+test('automatic reduced-motion preferences and startup failures preserve cleanup', async () => {
+  const { controller, log } = setup();
+  controller.setAutomatic(true);
+  await controller.startSample();
+  controller.setReducedMotion(true);
+  assert.deepEqual(log.engines[0].automatic.at(-1), { enabled: true, reduced: true });
+  controller.stop();
+  const media = fakeStream();
+  const failed = setup({ configureError: true, deps: { getUserMedia: async () => media.stream } });
+  failed.controller.setAutomatic(true);
+  await failed.controller.startCamera();
+  assert.equal(failed.controller.getState(), 'error');
+  assert.equal(media.track.stopped, 1);
+  assert.equal(failed.log.engines[0].freed, 1);
 });
 
 test('sample start does not ask for camera permission and renders frames', async () => {

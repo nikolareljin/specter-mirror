@@ -35,6 +35,11 @@ export interface StreamLike {
 export interface EngineLike {
   process_rgba(input: Uint8Array, mode: number, intensity: number): Uint8Array;
   configure_temporal(delayMs: number, trailStrength: number): void;
+  configure_automatic(enabled: boolean, reducedMotion: boolean): void;
+  process_automatic_rgba(input: Uint8Array, elapsedMs: number): Uint8Array;
+  haunt_state(): number;
+  haunt_strength(): number;
+  motion_activity(): number;
   process_timed_rgba(input: Uint8Array, mode: number, intensity: number, elapsedMs: number): Uint8Array;
   free(): void;
 }
@@ -55,6 +60,9 @@ export interface MirrorDeps {
 }
 
 export interface MirrorStatus {
+  hauntState: string | null;
+  hauntStrength: number | null;
+  activity: number | null;
   state: MirrorState;
   message: string;
   fps: number | null;
@@ -101,6 +109,7 @@ export class MirrorController {
   private delayMs = 0;
   private trailStrength = 0;
   private reducedMotion = false;
+  private automatic = false;
 
   constructor(deps: MirrorDeps, onStatus: (status: MirrorStatus) => void) {
     this.deps = deps;
@@ -131,12 +140,24 @@ export class MirrorController {
     this.configureTemporal();
   }
 
+  setAutomatic(enabled: boolean): void {
+    if (enabled === this.automatic) return;
+    this.automatic = enabled;
+    this.configureTemporal();
+    this.emit();
+  }
+
+  private configureEngine(engine: EngineLike): void {
+    engine.configure_automatic(this.automatic, this.reducedMotion);
+    if (!this.automatic) engine.configure_temporal(
+      this.reducedMotion ? 0 : this.delayMs,
+      this.reducedMotion ? 0 : this.trailStrength,
+    );
+  }
+
   private configureTemporal(): void {
     try {
-      this.engine?.configure_temporal(
-        this.reducedMotion ? 0 : this.delayMs,
-        this.reducedMotion ? 0 : this.trailStrength,
-      );
+      if (this.engine) this.configureEngine(this.engine);
     } catch {
       this.fail('The reflection settings could not be applied. Try starting the mirror again.');
     }
@@ -178,8 +199,7 @@ export class MirrorController {
         return;
       }
       this.engine = engine;
-      engine.configure_temporal(this.reducedMotion ? 0 : this.delayMs,
-        this.reducedMotion ? 0 : this.trailStrength);
+      this.configureEngine(engine);
       await this.deps.attachStream(stream);
       if (epoch !== this.epoch) return;
     } catch (error) {
@@ -206,8 +226,7 @@ export class MirrorController {
         return;
       }
       this.engine = engine;
-      engine.configure_temporal(this.reducedMotion ? 0 : this.delayMs,
-        this.reducedMotion ? 0 : this.trailStrength);
+      this.configureEngine(engine);
     } catch (error) {
       if (epoch === this.epoch) {
         this.fail(
@@ -271,8 +290,10 @@ export class MirrorController {
       const t1 = this.deps.now();
       captureMs = t1 - t0;
       if (frame) {
-        const output = this.engine.process_timed_rgba(frame, this.mode, this.intensity,
-          Math.floor(t0 - this.startedAt));
+        const elapsed = Math.floor(t0 - this.startedAt);
+        const output = this.automatic
+          ? this.engine.process_automatic_rgba(frame, elapsed)
+          : this.engine.process_timed_rgba(frame, this.mode, this.intensity, elapsed);
         const t2 = this.deps.now();
         processMs = t2 - t1;
         this.deps.render(output);
@@ -340,6 +361,10 @@ export class MirrorController {
       if (span > 0) fps = ((times.length - 1) * 1000) / span;
     }
     this.onStatus({
+      hauntState: this.automatic && this.source && this.engine
+        ? ['Idle', 'Motion detected', 'Transforming', 'Haunted', 'Recovering'][this.engine.haunt_state()] ?? 'Idle' : null,
+      hauntStrength: this.automatic && this.source && this.engine ? this.engine.haunt_strength() : null,
+      activity: this.automatic && this.source && this.engine ? this.engine.motion_activity() : null,
       state: this.state,
       message: this.lastMessage,
       fps,

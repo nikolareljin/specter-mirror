@@ -8,6 +8,9 @@ and verification. Keep execution evidence in `docs/KIRO-DEVELOPMENT.md`.
   Test reset, malformed input, time boundaries and huge time jumps.
 - [x] Add one bounded timestamped frame-history ring shared by delayed
   reflection and ghost trails. Verify warm-up, reset, reuse and the 4 MiB cap.
+- [x] Integrate a shared clear-opening intensity envelope with automatic
+  temporal/palette processing and manual fallback. Verify gradual recovery,
+  reduced motion, warm history, source reset and hidden-page cleanup.
 - [ ] Add independent procedural ghost/skull geometry, distortion, frost,
   vignette and palettes, with original golden fixtures at both processing sizes.
 - [ ] Add validated recipe composition and deterministic order; test independent

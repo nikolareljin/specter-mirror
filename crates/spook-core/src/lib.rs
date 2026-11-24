@@ -6,6 +6,7 @@ mod dither;
 mod grayscale;
 mod haunt;
 mod motion;
+mod progression;
 mod sobel;
 mod temporal;
 
@@ -13,6 +14,7 @@ pub use dither::bayer_dither_gray8;
 pub use grayscale::grayscale_rgb24;
 pub use haunt::{HauntConfig, HauntError, HauntMachine, HauntSnapshot, HauntState};
 pub use motion::{motion_gray8, MotionError, MotionObservation, NormalizedPoint};
+pub use progression::{HauntLevel, HauntProgression, HAUNT_FULL_STRENGTH};
 pub use sobel::sobel_l1;
 pub use temporal::{TemporalError, TemporalHistory, TemporalOptions};
 

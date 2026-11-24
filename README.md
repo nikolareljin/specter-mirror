@@ -15,6 +15,8 @@ Rust grayscale, Sobel and Bayer processing. Combine any palette with delayed
 reflection and ghost trails, or choose a named combination. Choose a webcam
 or an original generated visitor scene, then use Full screen for an immersive
 view. Camera access requires a button click; frames stay on your device.
+Automatic haunting opens as a clear mirror, then gradually introduces delay,
+trails and spectral edges after motion. Turn it off to use the manual controls.
 The native X11 application animates a generated diagnostic sample through
 the same delay/trail engine, with a 160 x 120 fallback. Native camera capture
 and interaction detection remain separate work. Artwork is illustrative.

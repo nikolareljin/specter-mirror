@@ -6,7 +6,7 @@ export interface SamplePose {
   turn: number;
 }
 
-const CYCLE_MS = 18_000;
+const CYCLE_MS = 28_000;
 const ease = (t: number) => t * t * (3 - 2 * t);
 
 /** Original generated visitor: enter, move, hold still, then leave. */
