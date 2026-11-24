@@ -23,6 +23,7 @@ and interaction detection remain separate work. Artwork is illustrative.
 ./dev --help
 rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy --target i686-unknown-linux-gnu,wasm32-unknown-unknown
 ./dev test
+./dev all-test
 ./dev native-proof
 ./check
 cd web

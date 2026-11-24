@@ -3,7 +3,7 @@
 Execute one bounded task at a time. Check off work only after implementation
 and verification. Keep execution evidence in `docs/KIRO-DEVELOPMENT.md`.
 
-- [ ] Add validated motion observations with normalized changed-pixel location,
+- [x] Add validated motion observations with normalized changed-pixel location,
   threshold hysteresis, stillness grace and a clock-driven five-state machine.
   Test reset, malformed input, time boundaries and huge time jumps.
 - [x] Add one bounded timestamped frame-history ring shared by delayed
