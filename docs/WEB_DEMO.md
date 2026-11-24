@@ -32,7 +32,8 @@ Blend: `(original * (255 - i) + processed * i + 127) / 255`.
 Automatic haunting is enabled initially. The shared Rust progression holds a
 clear reflection for five seconds from the first frame, then builds temporal
 and spectral intensity over six seconds when motion has established interaction.
-Stillness gets a ten-second grace period before a three-second fade to clear.
+Stillness gets a ten-second grace period before a fade to clear taking up to
+three seconds, depending on current intensity.
 Renewed motion during recovery keeps the current intensity instead of jumping.
 Motion measures changed pixels, not a face or a person's presence; uniform
 lighting changes can also trigger it. This first automatic treatment is fixed;

@@ -193,9 +193,17 @@ impl MirrorEngine {
         history
             .process(input, &mut self.work, now, options)
             .map_err(|e| e.to_string())?;
-        fill_rgb(&mut self.rgb, &self.work);
+        if options.delay_ms > 0 || options.trail_strength > 0 {
+            fill_rgb(&mut self.rgb, &self.work);
+        }
         self.last_time_ms = Some(now);
-        self.render(expected, MODE_SPECTRAL, scale(140) as u8)
+        let intensity = scale(140) as u8;
+        let mode = if intensity == 0 {
+            MODE_MIRROR
+        } else {
+            MODE_SPECTRAL
+        };
+        self.render(expected, mode, intensity)
     }
 
     /// State codes: idle=0, presence=1, transforming=2, haunted=3, recovering=4.
