@@ -35,6 +35,14 @@ and bounded generated sequences. The session reported manual commands and no
 hook execution. Core APIs alone do not establish browser interaction, head
 localization, physical webcam support or measured target performance.
 
+The skull-layer task in `04-haunted-experience` provides
+`render_skull_rgba` for caller-supplied bounds, with original golden masks at
+160 x 120 and 320 x 240. Tests cover literal blends, clipped geometry,
+extreme positions, invalid arguments and deterministic generated cases.
+Review replaced a 64-bit-only test value with a portable oversized dimension.
+The session reported manual checks and no hook execution. This renderer does
+not locate heads or establish camera alignment or target performance.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's
