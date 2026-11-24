@@ -3,7 +3,7 @@
 # DESCRIPTION: Open the native display, web interface or disposable appliance VM.
 # USAGE: ./demo [native|web|vm] [options]
 # PARAMETERS:
-#   native             Open the synthetic Rust image until Escape (default).
+#   native             Animate the generated native sample until Escape (default).
 #   web                Preview the web interface on localhost. Ctrl+C stops it.
 #   web --port PORT    Use a fixed port from 1 to 65535; default is 5173.
 #   vm [OPTIONS]       Forward options to the QEMU/KVM validation runner.

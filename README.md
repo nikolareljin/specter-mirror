@@ -15,7 +15,8 @@ Rust grayscale, Sobel and Bayer processing. Combine any palette with delayed
 reflection and ghost trails, or choose a named combination. Choose a webcam
 or an original generated visitor scene, then use Full screen for an immersive
 view. Camera access requires a button click; frames stay on your device.
-The native X11 application renders a synthetic frame. Native camera capture
+The native X11 application animates a generated diagnostic sample through
+the same delay/trail engine, with a 160 x 120 fallback. Native camera capture
 and interaction detection remain separate work. Artwork is illustrative.
 
 ```bash
@@ -37,7 +38,9 @@ The X11 proof needs a display; use `xvfb-run -a ./dev native-proof` in CI.
 
 ## Try locally
 
-Run `./demo native` to keep the synthetic Rust image open until Escape.
+Run `./demo native` to keep the animated native sample open until Escape.
+Use the native executable's `--help` for delay, trails, resolution and reduced
+motion controls; [native options](docs/NATIVE_COMPATIBILITY.md) include examples.
 Run `./demo web` to preview the interface at
 http://127.0.0.1:5173/specter-mirror/. Use `./demo web --port 5179` if the
 default port is occupied. Install web dependencies with `npm ci --prefix web`
