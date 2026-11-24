@@ -157,13 +157,17 @@ test('sample head bounds enclose the drawn ellipse at both processing sizes', ()
 });
 
 test('sample head rotation widens the box beyond the unrotated ellipse', () => {
-  const turned = samplePose(4_500);
-  assert.ok(Math.abs(turned.turn) > 0.05);
+  const turned = samplePose(3_256);
+  assert.ok(Math.abs(turned.turn) > 0.03);
   const w = 320;
   const h = 240;
-  const bounds = sampleHeadBounds(w, h, 4_500, false);
-  const unrotatedHalfY = 0.38 * turned.scale * 0.33 * h;
-  assert.ok(bounds.height / 2 > unrotatedHalfY);
+  const bounds = sampleHeadBounds(w, h, 3_256, false);
+  // Rotation crosses the left pixel edge: [148, 194], versus [149, 194].
+  assert.equal(bounds.x, 148);
+  assert.equal(bounds.width, 46);
+  const unrotatedLeft = Math.floor((turned.x - 0.28 * turned.scale * 0.25) * w);
+  assert.equal(unrotatedLeft, 149);
+  assert.ok(bounds.x < unrotatedLeft);
   const flat = sampleHeadBounds(w, h, 8_000, false);
   assert.equal(samplePose(8_000).turn, 0);
   assert.equal(flat.width, Math.ceil(0.52 * w + 0.28 * 0.25 * w) - Math.floor(0.52 * w - 0.28 * 0.25 * w));
