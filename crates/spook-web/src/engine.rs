@@ -9,6 +9,9 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[path = "automatic.rs"]
 mod automatic;
 use automatic::Automatic;
+#[path = "skull_event.rs"]
+mod skull_event;
+use skull_event::SkullLayer;
 
 pub const MAX_WIDTH: u32 = 640;
 pub const MAX_HEIGHT: u32 = 480;
@@ -44,6 +47,8 @@ pub struct MirrorEngine {
     automatic: Option<Automatic>,
     automatic_enabled: bool,
     reduced_motion: bool,
+    // Optional head-aligned skull layer: one scratch RGBA frame plus metadata.
+    skull: SkullLayer,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -79,6 +84,7 @@ impl MirrorEngine {
             automatic: None,
             automatic_enabled: false,
             reduced_motion: false,
+            skull: SkullLayer::new(),
         })
     }
 
@@ -125,6 +131,7 @@ impl MirrorEngine {
         if let Some(automatic) = self.automatic.as_mut() {
             automatic.reset();
         }
+        self.skull.reset();
     }
 
     /// Changes automatic/reduced-motion preferences and resets the session.
@@ -203,7 +210,62 @@ impl MirrorEngine {
         } else {
             MODE_SPECTRAL
         };
-        self.render(expected, mode, intensity)
+        let mut output = self.render(expected, mode, intensity)?;
+        self.skull.apply(
+            &mut output,
+            self.width,
+            self.height,
+            now,
+            level.strength,
+            self.reduced_motion,
+        )?;
+        Ok(output)
+    }
+
+    /// Enables or disables the head-aligned skull layer for automatic output.
+    /// The scratch frame is allocated here, never while processing; failure
+    /// preserves every setting. Identical settings change nothing. A real
+    /// change clears skull observations and events, not temporal history or
+    /// the automatic envelope.
+    pub fn configure_skull(&mut self, enabled: bool) -> Result<(), String> {
+        self.skull.configure(enabled, self.gray.len())
+    }
+
+    /// Records head bounds in the unmirrored processing frame. The rectangle
+    /// must be nonempty and fully inside the frame, confidence 0..=1000, and
+    /// `observed_ms` an integer in 0..=9007199254740991 that does not precede
+    /// the previous accepted observation (until reset). Errors change no state.
+    /// While the layer is disabled a valid observation is accepted and ignored.
+    pub fn observe_head(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        confidence: u16,
+        observed_ms: f64,
+    ) -> Result<(), String> {
+        let observed = parse_ms(observed_ms)?;
+        self.skull.observe(
+            self.width,
+            self.height,
+            x,
+            y,
+            width,
+            height,
+            confidence,
+            observed,
+        )
+    }
+
+    /// Forgets the head bounds and cancels any skull event immediately.
+    pub fn clear_head(&mut self) {
+        self.skull.clear_head();
+    }
+
+    /// Opacity (0..=96) applied to the most recent automatic frame.
+    pub fn skull_opacity(&self) -> u8 {
+        self.skull.opacity()
     }
 
     /// State codes: idle=0, presence=1, transforming=2, haunted=3, recovering=4.
@@ -276,13 +338,7 @@ impl MirrorEngine {
     }
 
     fn validate_time(&self, elapsed_ms: f64) -> Result<u64, String> {
-        if !elapsed_ms.is_finite()
-            || elapsed_ms.fract() != 0.0
-            || !(0.0..=MAX_SAFE_MS).contains(&elapsed_ms)
-        {
-            return Err("elapsed time must be an integer from 0 to 9007199254740991".into());
-        }
-        let now = elapsed_ms as u64;
+        let now = parse_ms(elapsed_ms)?;
         if self.last_time_ms.is_some_and(|last| now < last) {
             return Err("elapsed time must not decrease".into());
         }
@@ -354,6 +410,17 @@ impl MirrorEngine {
         }
         Ok(out)
     }
+}
+
+/// Accepts a finite integer from 0 to 2^53 - 1 (a JavaScript safe integer).
+fn parse_ms(elapsed_ms: f64) -> Result<u64, String> {
+    if !elapsed_ms.is_finite()
+        || elapsed_ms.fract() != 0.0
+        || !(0.0..=MAX_SAFE_MS).contains(&elapsed_ms)
+    {
+        return Err("elapsed time must be an integer from 0 to 9007199254740991".into());
+    }
+    Ok(elapsed_ms as u64)
 }
 
 fn fill_rgb(rgb: &mut [u8], rgba: &[u8]) {

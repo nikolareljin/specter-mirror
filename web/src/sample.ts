@@ -29,6 +29,54 @@ export function samplePose(elapsedMs: number, reducedMotion = false): SamplePose
   return { visible: false, x: 1.3, scale: 1, arm: 0.2, turn: 0.08 };
 }
 
+export interface HeadBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Head ellipse in drawSampleScene's local space: center, radii (rotation is
+// pose.turn). Keep these in step with the ellipse drawn below.
+const HEAD_CENTER_Y = -0.69;
+const HEAD_RADIUS_X = 0.25;
+const HEAD_RADIUS_Y = 0.33;
+const BODY_SCALE_X = 0.28;
+const BODY_SCALE_Y = 0.38;
+const BODY_ORIGIN_Y = 0.55;
+
+/**
+ * Integer, axis-aligned bounds of the generated visitor's head ellipse in
+ * unmirrored frame pixels, from the same pose and transforms as the drawing.
+ * This is known scene geometry, not detection. Returns null when the visitor
+ * is absent or the head is not entirely inside the frame.
+ */
+export function sampleHeadBounds(
+  width: number, height: number, elapsedMs: number, reducedMotion: boolean,
+): HeadBounds | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  const pose = samplePose(elapsedMs, reducedMotion);
+  if (!pose.visible) return null;
+  const cos = Math.cos(pose.turn);
+  const sin = Math.sin(pose.turn);
+  const halfX = Math.hypot(HEAD_RADIUS_X * cos, HEAD_RADIUS_Y * sin);
+  const halfY = Math.hypot(HEAD_RADIUS_X * sin, HEAD_RADIUS_Y * cos);
+  const scaleX = BODY_SCALE_X * pose.scale;
+  const scaleY = BODY_SCALE_Y * pose.scale;
+  const centerX = pose.x;
+  const centerY = BODY_ORIGIN_Y + scaleY * HEAD_CENTER_Y;
+  // Small epsilon keeps float noise from moving an exact pixel edge outward.
+  const eps = 1e-9;
+  const left = Math.floor((centerX - scaleX * halfX) * width + eps);
+  const right = Math.ceil((centerX + scaleX * halfX) * width - eps);
+  const top = Math.floor((centerY - scaleY * halfY) * height + eps);
+  const bottom = Math.ceil((centerY + scaleY * halfY) * height - eps);
+  if (left < 0 || top < 0 || right > width || bottom > height || right <= left || bottom <= top) {
+    return null;
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 export function drawSampleScene(
   ctx: CanvasRenderingContext2D, width: number, height: number,
   elapsedMs: number, reducedMotion: boolean,
