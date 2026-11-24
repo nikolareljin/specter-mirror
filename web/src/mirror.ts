@@ -41,7 +41,20 @@ export interface EngineLike {
   haunt_strength(): number;
   motion_activity(): number;
   process_timed_rgba(input: Uint8Array, mode: number, intensity: number, elapsedMs: number): Uint8Array;
+  configure_skull(enabled: boolean): void;
+  observe_head(x: number, y: number, width: number, height: number, confidence: number, observedMs: number): void;
+  clear_head(): void;
+  skull_opacity(): number;
   free(): void;
+}
+
+/** Head bounds in unmirrored processing-frame pixels; confidence is 0..1000. */
+export interface HeadObservation {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence: number;
 }
 
 export interface MirrorDeps {
@@ -53,6 +66,12 @@ export interface MirrorDeps {
   detachStream(): void;
   /** Returns RGBA of exactly FRAME_WIDTH x FRAME_HEIGHT, or null if not ready. */
   captureFrame(source: SourceKind, elapsedMs: number): Uint8Array | null;
+  /**
+   * Optional synchronous head provider, called after a successful capture with
+   * the same elapsed time as the capture. Null or absent means no observation.
+   * The generated sample supplies its known geometry; a camera supplies none.
+   */
+  observeHead?(source: SourceKind, elapsedMs: number): HeadObservation | null;
   render(rgba: Uint8Array): void;
   schedule(callback: () => void): number;
   cancel(handle: number): void;
@@ -110,6 +129,7 @@ export class MirrorController {
   private trailStrength = 0;
   private reducedMotion = false;
   private automatic = false;
+  private skull = false;
 
   constructor(deps: MirrorDeps, onStatus: (status: MirrorStatus) => void) {
     this.deps = deps;
@@ -145,6 +165,17 @@ export class MirrorController {
     this.automatic = enabled;
     this.configureTemporal();
     this.emit();
+  }
+
+  /** Enables skull apparitions; keeps temporal history and the automatic envelope. */
+  setSkull(enabled: boolean): void {
+    if (enabled === this.skull) return;
+    this.skull = enabled;
+    try {
+      this.engine?.configure_skull(enabled);
+    } catch {
+      this.fail('The skull setting could not be applied. Try starting the mirror again.');
+    }
   }
 
   private configureEngine(engine: EngineLike): void {
@@ -200,6 +231,7 @@ export class MirrorController {
       }
       this.engine = engine;
       this.configureEngine(engine);
+      engine.configure_skull(this.skull);
       await this.deps.attachStream(stream);
       if (epoch !== this.epoch) return;
     } catch (error) {
@@ -227,6 +259,7 @@ export class MirrorController {
       }
       this.engine = engine;
       this.configureEngine(engine);
+      engine.configure_skull(this.skull);
     } catch (error) {
       if (epoch === this.epoch) {
         this.fail(
@@ -291,6 +324,14 @@ export class MirrorController {
       captureMs = t1 - t0;
       if (frame) {
         const elapsed = Math.floor(t0 - this.startedAt);
+        if (this.skull && this.automatic) {
+          const head = this.deps.observeHead?.(this.source, t0 - this.startedAt) ?? null;
+          if (head) {
+            this.engine.observe_head(head.x, head.y, head.width, head.height, head.confidence, elapsed);
+          } else {
+            this.engine.clear_head();
+          }
+        }
         const output = this.automatic
           ? this.engine.process_automatic_rgba(frame, elapsed)
           : this.engine.process_timed_rgba(frame, this.mode, this.intensity, elapsed);

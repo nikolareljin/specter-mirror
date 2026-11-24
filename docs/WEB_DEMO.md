@@ -37,7 +37,8 @@ three seconds, depending on current intensity.
 Renewed motion during recovery keeps the current intensity instead of jumping.
 Motion measures changed pixels, not a face or a person's presence; uniform
 lighting changes can also trigger it. This first automatic treatment is fixed;
-seeded event selection and head-aligned geometry remain separate requirements.
+seeded event selection remains a separate requirement. Head-aligned skulls are
+described under Skull apparitions.
 
 Turn automatic haunting off for manual settings. Its preferences, source
 changes and Stop reset interaction/history. Reduced motion keeps automatic
@@ -65,6 +66,48 @@ the WASM boundary. These bounds are not a total browser RAM measurement.
 Short or sparse history uses the oldest available sample, so the requested
 delay is not guaranteed during warm-up. Changing temporal settings, stopping
 or switching sources clears history. Invalid frames and timestamps are rejected.
+
+## Skull apparitions
+
+The `Skull apparitions` option (checked by default, available with automatic
+haunting) draws a translucent procedural skull over supplied head bounds. It
+needs a head observation, and only the generated sample provides one: the sample
+reports the known geometry of its own drawn head. A camera has no head
+localizer yet, so camera frames never show a skull. The sample placement is
+not face detection, and nothing here infers a head from motion.
+
+Observations are unmirrored processing-frame pixels (`x`, `y`, `width`,
+`height`) with confidence 0..1000 and the same finite integer millisecond clock
+as the frame. The rectangle must be nonempty and entirely inside the frame, and
+time must not go backwards until the engine is reset. An invalid observation is
+rejected and changes nothing. Confidence below 800, an age over 500 ms, a future
+stamp, or no bounds hides the skull at once and cancels its event. The mirror
+transform runs once, on the final output: `output_x = frame_width - x - width`.
+
+Event timeline, from the first eligible frame (automatic haunting, shared
+strength 1500 or more, fresh confident bounds, reduced motion off):
+
+| Time since start | Phase | Ramp |
+| --- | --- | --- |
+| 0 to 1200 ms | fade in | `t` |
+| 1200 to 2000 ms | hold | 1200 |
+| 2000 to 3200 ms | fade out | `3200 - t` |
+
+Opacity is `(96 * ramp * min(strength, 6000) + 3,600,000) / 7,200,000`, so it
+is at most 96, further scaled by strength / 6000, rounded half up. After an
+event ends or is cancelled the next one waits at least 8000 ms (from the
+nominal end, or from the frame that cancelled it). A large clock jump starts at
+most one event and never replays missed ones. Stop, source changes and changed
+automatic or reduced-motion preferences clear observations, cooldown and
+opacity. Toggling the option clears skull state only; temporal history and
+the clear-opening envelope continue. Reduced motion draws no skull, and manual
+reflection settings are unchanged.
+
+The engine holds one extra reusable RGBA frame (307,200 bytes at 320 x 240)
+allocated when the option is configured, plus a few fields of metadata. This
+is not a total memory measurement. The skull is drawn after the temporal and
+palette result and never feeds motion or the history ring. No alignment with a
+physical webcam, frame rate or target hardware has been measured.
 
 ## Sources
 - Start camera requests video only after you press the button, preferring a

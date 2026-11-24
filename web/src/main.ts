@@ -2,7 +2,7 @@
 import './style.css';
 import './fullscreen.css';
 import mirrorArtwork from '../../assets/illustrations/antique-mirror.svg';
-import { drawSampleScene } from './sample';
+import { drawSampleScene, sampleHeadBounds } from './sample';
 import { FullscreenSession } from './fullscreen';
 import {
   CAMERA_CONSTRAINTS,
@@ -71,6 +71,7 @@ function setupMirror(canvas: HTMLCanvasElement) {
   const trailsValue = need<HTMLOutputElement>('#trails-value');
   const profile = need<HTMLSelectElement>('#haunt-profile');
   const automatic = need<HTMLInputElement>('#automatic');
+  const skull = need<HTMLInputElement>('#skull');
   const haunting = need<HTMLElement>('#haunt-status');
   const temporalNote = need<HTMLElement>('#temporal-note');
   const statusEl = need<HTMLElement>('#status');
@@ -155,6 +156,13 @@ function setupMirror(canvas: HTMLCanvasElement) {
         const pixels = scratchCtx.getImageData(0, 0, FRAME_WIDTH, FRAME_HEIGHT).data;
         return new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
       },
+      observeHead(source: SourceKind, elapsedMs: number) {
+        // The generated visitor has known geometry. A camera has no head
+        // localizer yet, so it never reports a head.
+        if (source !== 'sample') return null;
+        const bounds = sampleHeadBounds(FRAME_WIDTH, FRAME_HEIGHT, elapsedMs, reducedMotion());
+        return bounds ? { ...bounds, confidence: 1000 } : null;
+      },
       render(rgba) {
         output.data.set(rgba);
         view.putImageData(output, 0, 0);
@@ -205,6 +213,8 @@ function setupMirror(canvas: HTMLCanvasElement) {
 
   const applyControls = (custom = true) => {
     controller.setAutomatic(automatic.checked);
+    controller.setSkull(skull.checked);
+    skull.disabled = !automatic.checked;
     for (const control of [profile, effect, intensity, delay, trails]) control.disabled = automatic.checked;
     if (custom) profile.value = 'custom';
     controller.setMode(Number(effect.value));
@@ -229,6 +239,7 @@ function setupMirror(canvas: HTMLCanvasElement) {
   trails.addEventListener('input', () => applyControls());
   reduced?.addEventListener('change', () => applyControls(false));
   automatic.addEventListener('change', () => applyControls(false));
+  skull.addEventListener('change', () => applyControls(false));
   profile.addEventListener('change', () => {
     const presets: Record<string, [string, string, string, string]> = {
       restless: ['1', '55', '250', '45'],

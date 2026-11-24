@@ -8,6 +8,7 @@ import {
   describeCameraError,
   samplePhase,
 } from '../src/mirror.ts';
+import { sampleHeadBounds } from '../src/sample.ts';
 
 function deferred() {
   let resolve;
@@ -84,6 +85,21 @@ function setup(overrides = {}) {
           if (overrides.processError) throw new Error('boom');
           return new Uint8Array(input.length).fill(mode + 1);
         },
+        skull: [],
+        observed: [],
+        cleared: 0,
+        configure_skull(enabled) {
+          if (overrides.skullConfigError) throw new Error('skull configuration failed');
+          this.skull.push(enabled);
+        },
+        observe_head(...args) {
+          if (overrides.observeError) throw new Error('observation rejected');
+          this.observed.push(args);
+        },
+        clear_head() {
+          this.cleared += 1;
+        },
+        skull_opacity() { return 0; },
         free() {
           this.freed += 1;
         },
@@ -561,4 +577,168 @@ test('sample phase is deterministic and static under reduced motion', () => {
     const p = samplePhase(ms, false);
     assert.ok(p >= 0 && p < Math.PI * 2);
   }
+});
+
+// Skull apparitions and head observations.
+function headProvider(calls) {
+  return {
+    observeHead: (source, elapsed) => {
+      calls.push({ source, elapsed });
+      if (source !== 'sample') return null;
+      const bounds = sampleHeadBounds(FRAME_WIDTH, FRAME_HEIGHT, elapsed, false);
+      return bounds ? { ...bounds, confidence: 1000 } : null;
+    },
+  };
+}
+
+test('skull option is off by default and the provider is never consulted', async () => {
+  const calls = [];
+  const { controller, log, step } = setup({ deps: headProvider(calls) });
+  await controller.startSample();
+  step(); step();
+  assert.deepEqual(calls, []);
+  assert.deepEqual(log.engines[0].skull, [false]);
+  assert.equal(log.engines[0].observed.length + log.engines[0].cleared, 0);
+});
+
+test('capture, head provider and engine share one elapsed clock', async () => {
+  const calls = [];
+  const { controller, log, step } = setup({ deps: headProvider(calls) });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startSample();
+  step(); step(); step();
+  const engine = log.engines[0];
+  assert.deepEqual(engine.skull, [true]);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map((c) => c.elapsed), log.captured.map((c) => c.elapsed));
+  assert.ok(calls.every((c) => c.source === 'sample'));
+  const floors = calls.map((c) => Math.floor(c.elapsed));
+  assert.deepEqual(engine.automaticCalls, floors);
+  // Sample at t=0 has an entering, clipped visitor: no usable head yet.
+  const expected = floors.map((_, i) => sampleHeadBounds(FRAME_WIDTH, FRAME_HEIGHT, calls[i].elapsed, false));
+  assert.equal(engine.observed.length, expected.filter(Boolean).length);
+  assert.equal(engine.cleared, expected.filter((b) => !b).length);
+});
+
+test('a head observation is passed with its confidence and the processing time', async () => {
+  const head = { x: 100, y: 40, width: 30, height: 40, confidence: 1000 };
+  const { controller, log, step } = setup({ deps: { observeHead: () => head } });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startSample();
+  step();
+  const [observed] = log.engines[0].observed;
+  assert.deepEqual(observed.slice(0, 5), [100, 40, 30, 40, 1000]);
+  assert.equal(observed[5], log.engines[0].automaticCalls[0]);
+  assert.equal(log.engines[0].cleared, 0);
+});
+
+test('camera frames never receive sample bounds and clear missing heads', async () => {
+  const calls = [];
+  const { controller, log, step } = setup({ deps: headProvider(calls) });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startSample();
+  // Advance to a time with a valid sample head, then switch to the camera.
+  for (let i = 0; i < 200 && log.engines[0].observed.length === 0; i += 1) step();
+  assert.ok(log.engines[0].observed.length > 0, 'sample head must be observed before switching');
+  controller.setSkull(true);
+  await controller.startCamera();
+  step(); step();
+  const [sampleEngine, cameraEngine] = log.engines;
+  assert.equal(sampleEngine.freed, 1);
+  assert.equal(cameraEngine.observed.length, 0);
+  assert.equal(cameraEngine.cleared, 2);
+  assert.deepEqual(cameraEngine.skull, [true]);
+  assert.ok(calls.slice(-2).every((c) => c.source === 'camera'));
+  controller.stop();
+});
+
+test('a missing provider means no observation, never a guessed head', async () => {
+  const { controller, log, step } = setup();
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startCamera();
+  step(); step();
+  assert.equal(log.engines[0].observed.length, 0);
+  assert.equal(log.engines[0].cleared, 2);
+  controller.stop();
+});
+
+test('toggling skulls keeps the engine, history and automatic envelope', async () => {
+  const calls = [];
+  const { controller, log, step } = setup({ deps: headProvider(calls) });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startSample();
+  step();
+  const engine = log.engines[0];
+  const before = [engine.automatic.length, engine.configured.length, engine.freed];
+  controller.setSkull(true);
+  assert.equal(engine.skull.length, 1);
+  controller.setSkull(false);
+  assert.deepEqual(engine.skull, [true, false]);
+  const providerCalls = calls.length;
+  step(); step();
+  assert.equal(calls.length, providerCalls);
+  controller.setSkull(true);
+  assert.deepEqual(engine.skull, [true, false, true]);
+  assert.deepEqual([engine.automatic.length, engine.configured.length, engine.freed], before);
+  assert.equal(log.engines.length, 1);
+  assert.equal(controller.getState(), 'sample');
+  controller.stop();
+});
+
+test('manual reflection and reduced motion leave the automatic settings alone', async () => {
+  const calls = [];
+  const { controller, log, step } = setup({ deps: headProvider(calls) });
+  controller.setSkull(true);
+  controller.setAutomatic(false);
+  await controller.startSample();
+  step();
+  assert.equal(calls.length, 0);
+  assert.equal(log.engines[0].timed.length, 1);
+  controller.setAutomatic(true);
+  controller.setReducedMotion(true);
+  assert.deepEqual(log.engines[0].automatic.at(-1), { enabled: true, reduced: true });
+  assert.deepEqual(log.engines[0].skull, [true]);
+  controller.stop();
+});
+
+for (const [name, overrides] of [
+  ['provider failure', { deps: { observeHead: () => { throw new Error('no head'); } } }],
+  ['engine rejection', { observeError: true, deps: { observeHead: () => ({ x: 1, y: 1, width: 2, height: 2, confidence: 1000 }) } }],
+]) {
+  test(`${name} stops the camera and frees the engine`, async () => {
+    const cam = fakeStream();
+    const { controller, log, pending, statuses, step } = setup({
+      ...overrides,
+      deps: { getUserMedia: async () => cam.stream, ...overrides.deps },
+    });
+    controller.setSkull(true);
+    controller.setAutomatic(true);
+    await controller.startCamera();
+    step();
+    assert.equal(controller.getState(), 'error');
+    assert.equal(cam.track.stopped, 1);
+    assert.equal(log.engines[0].freed, 1);
+    assert.ok(log.detached >= 1);
+    assert.equal(pending.size, 0);
+    assert.match(last(statuses).message, /Processing stopped/);
+  });
+}
+
+test('a failing skull toggle stops the mirror and releases resources', async () => {
+  const cam = fakeStream();
+  const { controller, log, pending } = setup({
+    deps: { getUserMedia: async () => cam.stream },
+  });
+  await controller.startCamera();
+  log.engines[0].configure_skull = () => { throw new Error('no memory'); };
+  controller.setSkull(true);
+  assert.equal(controller.getState(), 'error');
+  assert.equal(cam.track.stopped, 1);
+  assert.equal(log.engines[0].freed, 1);
+  assert.equal(pending.size, 0);
 });

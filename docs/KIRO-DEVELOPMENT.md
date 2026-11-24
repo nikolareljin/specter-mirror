@@ -43,6 +43,15 @@ Review replaced a 64-bit-only test value with a portable oversized dimension.
 The session reported manual checks and no hook execution. This renderer does
 not locate heads or establish camera alignment or target performance.
 
+The WASM skull task in `04-haunted-experience` connects supplied head bounds
+to timed translucent events and the browser sample's known head geometry.
+Tests cover mirrored placement, fades, freshness, confidence, scratch reuse,
+reset and source changes. Review strengthened the sample-to-camera test to
+require a valid sample observation before switching. Production WASM was
+checked at both processing sizes, with browser sample and simulated-camera
+cleanup checks. The session reported manual commands and no hook execution.
+Camera head localization and physical alignment remain unverified.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's
