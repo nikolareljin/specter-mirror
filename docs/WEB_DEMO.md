@@ -87,8 +87,9 @@ detected face in green. Detection cost must be measured on the actual host.
 Side profiles, dim light and fast movement can lose the
 face, and the skull then disappears. `--speed` is rejected with
 `--camera`, because a faster clock would make every detection too old. The
-detector exists only in this preview: the web page and native application
-still have no face localizer, so the page shows no skull on camera frames.
+detector in this preview is a separate thread; the web page runs the same
+detector and model in a worker, described under Camera head localization.
+The native application has no face localizer.
 The window needs an X11 `DISPLAY`; without one, use `--save`, or
 `xvfb-run -a ./dev preview --seconds 30` for a headless smoke test. The Rust
 visitor approximates the page's drawing; its head boxes agree with
@@ -129,14 +130,61 @@ Short or sparse history uses the oldest available sample, so the requested
 delay is not guaranteed during warm-up. Changing temporal settings, stopping
 or switching sources clears history. Invalid frames and timestamps are rejected.
 
+## Camera head localization
+
+The page can place the skull over a frontal face in camera frames. This is
+optional and local: it runs only for a camera you started, with automatic
+haunting and skull apparitions on and reduced motion off. A module worker loads
+its own copy of the WASM and the bundled SeetaFace model through rustface
+(`face-detection` feature, no thread pool, no `SharedArrayBuffer`, no GPU,
+no service). Both are same-origin assets under the page's base path. Nothing
+is uploaded, and there is no identity recognition.
+
+The worker starts on the first eligible camera frame. The controller offers the
+same unmirrored, cropped 320 x 240 frame it renders; the tracker converts it to
+160 x 120 grayscale (weights 77, 150, 29, shifted right 8, then a floored 2 x 2
+average) in one reusable 19,200-byte buffer and posts a copy, so the renderer's
+buffer is never detached. At most one request is in flight and none are queued.
+Offers are dropped while the worker starts or is busy, and submissions are at
+least 200 ms apart. Initialization times out after 8000 ms and inference after
+1500 ms. A timeout, worker error or malformed reply terminates the worker and
+shows "unavailable"; there is no automatic restart. A new source start or
+turning skulls off and on tries again.
+
+Messages carry a session generation and request id. A result carries the
+captured frame's integer elapsed time, which must match its request. Results
+with another generation or id are ignored; results with a future time, a
+regressing time or an age over 500 ms are dropped, and a kept result is never
+re-stamped. The newest usable observation is the only one retained and
+expires 500 ms after its frame time even when no new result arrives. The
+engine receives that original time unchanged.
+
+`BrowserFaceDetector.detect_gray8` returns nothing or
+`[x, y, width, height, confidence]` for the largest accepted face (ties go to
+the smaller y, then x) in 160 x 120 pixels, with confidence 800 to 1000 from
+the preview's mapping. The adapter widens it by 10% each side and extends it
+30% up and 5% down (integer floor division, clipped to the image), scales each
+edge outward with integer arithmetic into the processing frame (160 x 120 or
+320 x 240) and clips again. It does not mirror; the engine mirrors the bounds
+once with the pixels.
+
+Stop, source changes, camera failure, skull off, automatic off, reduced motion
+and a hidden page terminate the worker and clear observations, timers and
+staging storage. Late messages from a terminated worker are ignored. If the
+locator fails, the camera reflection and other effects continue and the note
+beside the skull option says it is unavailable. Frontal faces can be missed,
+and profiles, occlusion, dim light and movement may lose the face. Detection
+cost and accuracy are not measured on any device, and alignment on a physical
+webcam is unverified.
+
 ## Skull apparitions
 
 The `Skull apparitions` option (checked by default, available with automatic
 haunting) draws a translucent procedural skull over supplied head bounds. It
-needs a head observation, and only the generated sample provides one: the sample
-reports the known geometry of its own drawn head. A camera has no head
-localizer yet, so camera frames never show a skull. The sample placement is
-not face detection, and nothing here infers a head from motion.
+needs a head observation. The generated sample reports the known geometry of
+its own drawn head. A camera reports only what the local face locator found
+(previous section); with no locator result there is no skull. The sample placement
+is not face detection, and nothing here infers a head from motion.
 
 Observations are unmirrored processing-frame pixels (`x`, `y`, `width`,
 `height`) with confidence 0..1000 and the same finite integer millisecond clock

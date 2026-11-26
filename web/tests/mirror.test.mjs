@@ -782,3 +782,161 @@ test('no seed provider keeps the fixed timing', async () => {
   assert.equal(controller.seed, null);
   controller.stop();
 });
+
+// Camera head localization: optional offer/release dependencies and timestamps.
+function locatorDeps(log) {
+  const frames = [];
+  return {
+    frames,
+    deps: {
+      offerHeadFrame: (frame, width, height, elapsed) => {
+        frames.push({ frame, width, height, elapsed, length: frame.length, first: frame[0] });
+      },
+      releaseHeadTracking: (retry) => log.push(retry),
+    },
+  };
+}
+
+test('a camera observation reaches the engine with its original timestamp', async () => {
+  const head = { x: 100, y: 40, width: 30, height: 40, confidence: 900, observedMs: 7 };
+  const { controller, log, step } = setup({ deps: { observeHead: () => head } });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startCamera();
+  step(); step();
+  const [first, second] = log.engines[0].observed;
+  assert.deepEqual(first, [100, 40, 30, 40, 900, 7]);
+  assert.equal(second[5], 7, 'not restamped with the later frame time');
+  assert.ok(log.engines[0].automaticCalls[1] > 7);
+  controller.stop();
+});
+
+test('observations without a timestamp (sample geometry) use the frame time', async () => {
+  const head = { x: 100, y: 40, width: 30, height: 40, confidence: 1000 };
+  const { controller, log, step } = setup({ deps: { observeHead: () => head } });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startSample();
+  step(); step();
+  const engine = log.engines[0];
+  assert.deepEqual(engine.observed.map((o) => o[5]), engine.automaticCalls);
+});
+
+test('frames are offered only to an eligible camera, unmodified and with the capture time', async () => {
+  const released = [];
+  const { frames, deps } = locatorDeps(released);
+  const captured = [];
+  const { controller, log, step } = setup({
+    deps: {
+      ...deps,
+      captureFrame: (source, elapsed) => {
+        const frame = new Uint8Array(FRAME_WIDTH * FRAME_HEIGHT * 4).fill(7);
+        captured.push({ frame, elapsed });
+        return frame;
+      },
+    },
+  });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startCamera();
+  step(); step();
+  assert.equal(frames.length, 2);
+  assert.deepEqual([frames[0].width, frames[0].height], [FRAME_WIDTH, FRAME_HEIGHT]);
+  assert.equal(frames[0].frame, captured[0].frame, 'the same buffer the renderer received');
+  assert.equal(frames[0].elapsed, Math.floor(captured[0].elapsed));
+  assert.equal(frames[0].elapsed, log.engines[0].automaticCalls[0]);
+  for (const { frame } of captured) {
+    assert.equal(frame.byteLength, FRAME_WIDTH * FRAME_HEIGHT * 4, 'still attached');
+    assert.ok(frame.every((v) => v === 7), 'unmodified');
+  }
+  controller.stop();
+});
+
+for (const [name, prepare, source] of [
+  ['skulls off', (c) => { c.setSkull(false); c.setAutomatic(true); }, 'camera'],
+  ['automatic off', (c) => { c.setSkull(true); c.setAutomatic(false); }, 'camera'],
+  ['reduced motion', (c) => { c.setSkull(true); c.setAutomatic(true); c.setReducedMotion(true); }, 'camera'],
+  ['sample source', (c) => { c.setSkull(true); c.setAutomatic(true); }, 'sample'],
+]) {
+  test(`no frames are offered with ${name}`, async () => {
+    const { frames, deps } = locatorDeps([]);
+    const { controller, step } = setup({ deps });
+    prepare(controller);
+    await (source === 'camera' ? controller.startCamera() : controller.startSample());
+    step(); step();
+    assert.equal(frames.length, 0);
+    controller.stop();
+  });
+}
+
+test('reduced motion on a camera never consults the provider and shows no skull', async () => {
+  let consulted = 0;
+  const head = { x: 1, y: 1, width: 4, height: 4, confidence: 1000, observedMs: 0 };
+  const { controller, log, step } = setup({ deps: { observeHead: () => { consulted += 1; return head; } } });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  controller.setReducedMotion(true);
+  await controller.startCamera();
+  step();
+  assert.equal(consulted, 0);
+  assert.equal(log.engines[0].observed.length, 0);
+  assert.equal(log.engines[0].cleared, 1);
+  controller.stop();
+});
+
+test('stop, source change and preference changes release the locator', async () => {
+  const released = [];
+  const { deps } = locatorDeps(released);
+  const { controller, step } = setup({ deps });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startCamera();
+  const after = released.length;
+  controller.setReducedMotion(true);
+  controller.setReducedMotion(false);
+  assert.deepEqual(released.slice(after), [false], 'reduced on releases without a retry');
+  controller.setAutomatic(false);
+  assert.deepEqual(released.slice(after), [false, false]);
+  controller.setAutomatic(true);
+  controller.setSkull(false);
+  assert.deepEqual(released.slice(after), [false, false, true], 'skull off allows a later retry');
+  controller.setSkull(true);
+  const before = released.length;
+  await controller.startSample();
+  assert.equal(released.length > before && released.at(-1), true, 'source change');
+  controller.stop();
+  assert.equal(released.at(-1), true);
+});
+
+test('camera loss releases the locator', async () => {
+  const cam = fakeStream();
+  const released = [];
+  const { deps } = locatorDeps(released);
+  const { controller } = setup({ deps: { ...deps, getUserMedia: async () => cam.stream } });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startCamera();
+  const before = released.length;
+  cam.end();
+  assert.equal(controller.getState(), 'error');
+  assert.ok(released.length > before);
+});
+
+test('locator offer and release failures never stop the mirror', async () => {
+  const { controller, log, step } = setup({
+    deps: {
+      offerHeadFrame: () => { throw new Error('worker exploded'); },
+      releaseHeadTracking: () => { throw new Error('cleanup exploded'); },
+    },
+  });
+  controller.setSkull(true);
+  controller.setAutomatic(true);
+  await controller.startCamera();
+  step(); step();
+  assert.equal(controller.getState(), 'camera');
+  assert.equal(log.rendered.length, 2);
+  controller.setSkull(false);
+  controller.setReducedMotion(true);
+  controller.stop();
+  assert.equal(controller.getState(), 'idle');
+});

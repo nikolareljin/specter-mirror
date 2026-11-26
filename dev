@@ -4,7 +4,7 @@
 # USAGE: ./dev [command]
 # PARAMETERS:
 #   check         Format, clippy, workspace tests, WASM and i686 checks (default).
-#   test          Run all Rust workspace tests.
+#   test          Run all Rust workspace tests with optional features enabled.
 #   all-test      Run Rust workspace, web (npm) and Python tests; report every failure.
 #   build         Build the workspace for the host architecture.
 #   build-i686    Link the release kiosk executable for i686 Linux.
@@ -76,15 +76,15 @@ toolchain_bin="$(dirname "$compiler")"
 export RUSTC="$compiler"
 export PATH="$toolchain_bin:$PATH"
 run_tests() {
-  cargo test --locked --workspace
+  cargo test --locked --workspace --all-features
   cargo test --locked -p spook-web --example preview
 }
 case "${1:-check}" in
   check)
     cargo fmt --all -- --check
-    cargo clippy --locked --workspace --all-targets -- -D warnings
+    cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
     run_tests
-    cargo check --locked -p spook-core -p spook-web --target wasm32-unknown-unknown
+    cargo check --locked -p spook-core -p spook-web --all-features --target wasm32-unknown-unknown
     cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
   test) run_tests ;;
   build) cargo build --locked --workspace ;;

@@ -3,8 +3,8 @@
 | Component | Reference | Use | License |
 | --- | --- | --- | --- |
 | minifb | 0.29.0, Cargo.lock | X11 software window (native application; development-only preview window for spook-web) | MIT OR Apache-2.0 |
-| rustface | 0.1.7, Cargo.lock | Local frontal face detection in the development preview only; dev-dependency of spook-web, not in WASM or kiosk builds | BSD-2-Clause |
-| num, byteorder | Cargo.lock, through rustface | Numeric support for rustface in the preview | MIT OR Apache-2.0 |
+| rustface | 0.1.7, Cargo.lock | Local frontal face detection: dev-dependency of the host preview, and an optional `face-detection` feature of spook-web (default features off) that the web build enables; not in kiosk builds | BSD-2-Clause |
+| num, byteorder | Cargo.lock, through rustface | Numeric support for rustface in the preview and the web face locator | MIT OR Apache-2.0 |
 | Vite | 8.3.8, web/package-lock.json | Frontend build | MIT |
 | TypeScript | 7.0.2, web/package-lock.json | Frontend type checking | Apache-2.0 |
 | wasm-bindgen | 0.2.130, Cargo.lock | Rust/JavaScript bindings for the WASM mirror engine | MIT OR Apache-2.0 |

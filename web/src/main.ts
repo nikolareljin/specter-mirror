@@ -4,6 +4,7 @@ import './fullscreen.css';
 import mirrorArtwork from '../../assets/illustrations/antique-mirror.svg';
 import { drawSampleScene, sampleHeadBounds } from './sample';
 import { FullscreenSession } from './fullscreen';
+import { HeadTracker, type HeadTrackerStatus, type WorkerLike } from './head-tracker';
 import {
   CAMERA_CONSTRAINTS,
   FRAME_HEIGHT,
@@ -72,6 +73,7 @@ function setupMirror(canvas: HTMLCanvasElement) {
   const profile = need<HTMLSelectElement>('#haunt-profile');
   const automatic = need<HTMLInputElement>('#automatic');
   const skull = need<HTMLInputElement>('#skull');
+  const skullNote = need<HTMLElement>('#skull-note');
   const haunting = need<HTMLElement>('#haunt-status');
   const temporalNote = need<HTMLElement>('#temporal-note');
   const statusEl = need<HTMLElement>('#status');
@@ -108,6 +110,22 @@ function setupMirror(canvas: HTMLCanvasElement) {
     return;
   }
   const output = view.createImageData(FRAME_WIDTH, FRAME_HEIGHT);
+  const skullBase = 'Sample placement is demonstrated. With the camera, a local face locator may place the skull; it is optional and can miss faces that are not frontal.';
+  const showHeadStatus = (status: HeadTrackerStatus) => {
+    skullNote.textContent = status.state === 'off' ? skullBase : `${skullBase} ${status.message}`;
+  };
+  skullNote.textContent = skullBase;
+  // Face inference runs in a module worker with its own WASM instance and is
+  // started lazily by the first eligible camera frame.
+  const headTracker = new HeadTracker({
+    createWorker: () => new Worker(new URL('./head-worker.ts', import.meta.url), {
+      type: 'module',
+    }) as unknown as WorkerLike,
+    now: () => performance.now(),
+    setTimer: (callback, ms) => setTimeout(callback, ms),
+    clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    onStatus: showHeadStatus,
+  });
   let shownMessage = '';
   // The visitor's visit plan follows the engine's timing seed; none means the
   // original 28 second loop.
@@ -166,13 +184,19 @@ function setupMirror(canvas: HTMLCanvasElement) {
         return words[0];
       },
       observeHead(source: SourceKind, elapsedMs: number) {
-        // The generated visitor has known geometry. A camera has no head
-        // localizer yet, so it never reports a head.
-        if (source !== 'sample') return null;
+        // The generated visitor has known geometry. A camera reports only the
+        // latest fresh result of the local face locator, never a guess.
+        if (source !== 'sample') return headTracker.observe(elapsedMs);
         const bounds = sampleHeadBounds(
           FRAME_WIDTH, FRAME_HEIGHT, elapsedMs, reducedMotion(), sampleSeed(),
         );
         return bounds ? { ...bounds, confidence: 1000 } : null;
+      },
+      offerHeadFrame(frame, width, height, elapsedMs) {
+        headTracker.offer(frame, width, height, elapsedMs);
+      },
+      releaseHeadTracking(retry) {
+        headTracker.release(retry);
       },
       render(rgba) {
         output.data.set(rgba);
@@ -286,6 +310,7 @@ function setupMirror(canvas: HTMLCanvasElement) {
     void fullscreen.stop();
   });
   document.addEventListener('visibilitychange', () => {
+    headTracker.setHidden(document.hidden);
     if (document.hidden) controller.stop();
   });
 }
