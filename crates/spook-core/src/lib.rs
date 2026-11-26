@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+mod director;
 mod dither;
 mod grayscale;
 mod haunt;
@@ -11,6 +12,9 @@ mod skull;
 mod sobel;
 mod temporal;
 
+pub use director::{
+    DirectorConfig, DirectorError, DirectorInput, DirectorSnapshot, HauntDirector, ECHO, LAG, SKULL,
+};
 pub use dither::bayer_dither_gray8;
 pub use grayscale::grayscale_rgb24;
 pub use haunt::{HauntConfig, HauntError, HauntMachine, HauntSnapshot, HauntState};
