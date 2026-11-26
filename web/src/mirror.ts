@@ -42,6 +42,7 @@ export interface EngineLike {
   motion_activity(): number;
   process_timed_rgba(input: Uint8Array, mode: number, intensity: number, elapsedMs: number): Uint8Array;
   configure_skull(enabled: boolean): void;
+  configure_seed(seed: number): void;
   observe_head(x: number, y: number, width: number, height: number, confidence: number, observedMs: number): void;
   clear_head(): void;
   skull_opacity(): number;
@@ -72,6 +73,8 @@ export interface MirrorDeps {
    * The generated sample supplies its known geometry; a camera supplies none.
    */
   observeHead?(source: SourceKind, elapsedMs: number): HeadObservation | null;
+  /** Optional unsigned 32-bit seed for each start's randomized timing. */
+  randomSeed?(): number;
   render(rgba: Uint8Array): void;
   schedule(callback: () => void): number;
   cancel(handle: number): void;
@@ -130,6 +133,9 @@ export class MirrorController {
   private reducedMotion = false;
   private automatic = false;
   private skull = false;
+  /** Seed of the current engine's timing, for logging and replay. */
+  seed: number | null = null;
+  private seeded = new WeakSet<EngineLike>();
 
   constructor(deps: MirrorDeps, onStatus: (status: MirrorStatus) => void) {
     this.deps = deps;
@@ -180,6 +186,16 @@ export class MirrorController {
 
   private configureEngine(engine: EngineLike): void {
     engine.configure_automatic(this.automatic, this.reducedMotion);
+    // Seed each engine once, the first time automatic haunting is active, so
+    // later preference changes keep the drawn timing.
+    if (this.automatic && !this.seeded.has(engine)) {
+      const seed = this.deps.randomSeed?.();
+      if (seed !== undefined && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff) {
+        engine.configure_seed(seed);
+        this.seed = seed;
+      }
+      this.seeded.add(engine);
+    }
     if (!this.automatic) engine.configure_temporal(
       this.reducedMotion ? 0 : this.delayMs,
       this.reducedMotion ? 0 : this.trailStrength,
@@ -387,6 +403,7 @@ export class MirrorController {
       this.engine = null;
     }
     this.source = null;
+    this.seed = null;
     this.busy = false;
     this.frameTimes = [];
   }

@@ -12,3 +12,10 @@ crate-type = ["cdylib", "rlib"]
 spook-core = { path = "../spook-core" }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "=0.2.130"
+
+# The live preview example opens an X11 window with the crate and pin spook-kiosk uses.
+# Not for i686 or wasm32, so their test checks need no X11 cross libraries.
+[target.'cfg(not(any(target_arch = "x86", target_arch = "wasm32")))'.dev-dependencies]
+minifb = { version = "=0.29.0", default-features = false, features = ["x11"] }
+# Local face detection for the preview webcam (BSD-2-Clause, no thread pool).
+rustface = { version = "=0.1.7", default-features = false }

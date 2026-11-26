@@ -164,6 +164,25 @@ impl HauntMachine {
         })
     }
 
+    /// Replaces the transform, stillness and recovery durations. Invalid values
+    /// (outside 1..120000 ms) are rejected and change nothing. The current
+    /// state, clock and latch are kept.
+    pub fn set_durations(
+        &mut self,
+        transform_ms: u64,
+        stillness_ms: u64,
+        recovery_ms: u64,
+    ) -> Result<(), HauntError> {
+        let duration_ok = |ms: u64| (1..MAX_DURATION_MS).contains(&ms);
+        if !(duration_ok(transform_ms) && duration_ok(stillness_ms) && duration_ok(recovery_ms)) {
+            return Err(HauntError::InvalidConfig);
+        }
+        self.config.transform_ms = transform_ms;
+        self.config.stillness_ms = stillness_ms;
+        self.config.recovery_ms = recovery_ms;
+        Ok(())
+    }
+
     /// Back to `Idle` with no clock and an inactive latch; config is kept.
     pub fn reset(&mut self) {
         self.state = HauntState::Idle;

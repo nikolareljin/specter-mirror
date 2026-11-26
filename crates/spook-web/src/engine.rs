@@ -222,6 +222,20 @@ impl MirrorEngine {
         Ok(output)
     }
 
+    /// Draws each visit's clear opening, rise, hold and return from `seed`
+    /// (4 to 15 seconds each, eased). The host supplies the seed; the same
+    /// seed replays the same timing. Resets the automatic session and skull
+    /// state but keeps temporal history storage. Requires `configure_automatic`.
+    pub fn configure_seed(&mut self, seed: u32) -> Result<(), String> {
+        let automatic = self
+            .automatic
+            .as_mut()
+            .ok_or("automatic reflection is not configured")?;
+        automatic.set_seed(seed)?;
+        self.reset_temporal();
+        Ok(())
+    }
+
     /// Enables or disables the head-aligned skull layer for automatic output.
     /// The scratch frame is allocated here, never while processing; failure
     /// preserves every setting. Identical settings change nothing. A real

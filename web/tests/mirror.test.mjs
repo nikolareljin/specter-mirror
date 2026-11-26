@@ -88,6 +88,8 @@ function setup(overrides = {}) {
         skull: [],
         observed: [],
         cleared: 0,
+        seeds: [],
+        configure_seed(seed) { this.seeds.push(seed); },
         configure_skull(enabled) {
           if (overrides.skullConfigError) throw new Error('skull configuration failed');
           this.skull.push(enabled);
@@ -741,4 +743,42 @@ test('a failing skull toggle stops the mirror and releases resources', async () 
   assert.equal(cam.track.stopped, 1);
   assert.equal(log.engines[0].freed, 1);
   assert.equal(pending.size, 0);
+});
+
+test('each engine gets one host seed when automatic haunting starts, kept across preference changes', async () => {
+  const seeds = [0, 4294967295, -1, 1.5, 2 ** 32];
+  const { controller, log } = setup({ deps: { randomSeed: () => seeds.shift() } });
+  controller.setAutomatic(true);
+  await controller.startSample();
+  assert.deepEqual(log.engines[0].seeds, [0]);
+  assert.equal(controller.seed, 0);
+  controller.setReducedMotion(true);
+  controller.setAutomatic(false);
+  controller.setAutomatic(true);
+  assert.deepEqual(log.engines[0].seeds, [0]);
+  await controller.startSample();
+  assert.deepEqual(log.engines[1].seeds, [4294967295]);
+  for (const bad of [-1, 1.5, 2 ** 32]) {
+    await controller.startSample();
+    assert.deepEqual(log.engines.at(-1).seeds, [], `seed ${bad} is ignored`);
+  }
+  controller.stop();
+});
+
+test('manual start seeds later, when automatic haunting is turned on', async () => {
+  const { controller, log } = setup({ deps: { randomSeed: () => 42 } });
+  controller.setAutomatic(false);
+  await controller.startSample();
+  assert.deepEqual(log.engines[0].seeds, []);
+  controller.setAutomatic(true);
+  assert.deepEqual(log.engines[0].seeds, [42]);
+  controller.stop();
+});
+
+test('no seed provider keeps the fixed timing', async () => {
+  const { controller, log } = setup();
+  await controller.startSample();
+  assert.deepEqual(log.engines[0].seeds, []);
+  assert.equal(controller.seed, null);
+  controller.stop();
 });

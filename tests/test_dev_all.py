@@ -8,7 +8,7 @@ import unittest
 
 
 class AllTestCommand(unittest.TestCase):
-    def run_suites(self, rust=0, web=0, python=0, toolchain=0):
+    def run_suites(self, rust=0, web=0, python=0, toolchain=0, preview=0):
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
             project = root / "project with spaces"
@@ -20,7 +20,12 @@ class AllTestCommand(unittest.TestCase):
             log = root / "calls"
             commands = {
                 "rustup": f"exit {toolchain}" if toolchain else f"printf '%s\\n' {shlex.quote(str(binary / 'rustc'))}",
-                "cargo": f'echo rust >> "$SUITE_LOG"\nexit {rust}',
+                "cargo": (
+                    'case " $* " in\n'
+                    f'  *" --example preview "*) echo preview >> "$SUITE_LOG"; exit {preview} ;;\n'
+                    f'  *) echo rust >> "$SUITE_LOG"; exit {rust} ;;\n'
+                    'esac'
+                ),
                 "npm": f'echo web >> "$SUITE_LOG"\nexit {web}',
                 "python3": f'echo python >> "$SUITE_LOG"\nexit {python}',
             }
@@ -38,14 +43,15 @@ class AllTestCommand(unittest.TestCase):
     def test_success_runs_all_suites_from_another_directory(self):
         result, calls = self.run_suites()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls, ["rust", "web", "python"])
+        self.assertEqual(calls, ["rust", "preview", "web", "python"])
 
     def test_each_failure_preserves_later_suites_and_returns_nonzero(self):
         for failures in [(1, 0, 0), (0, 2, 0), (0, 0, 3), (1, 2, 3)]:
             with self.subTest(failures=failures):
                 result, calls = self.run_suites(*failures)
                 self.assertEqual(result.returncode, 1)
-                self.assertEqual(calls, ["rust", "web", "python"])
+                expected = ["rust", "web", "python"] if failures[0] else ["rust", "preview", "web", "python"]
+                self.assertEqual(calls, expected)
                 for code, suite in zip(failures, ["rust workspace", "web", "python"]):
                     self.assertEqual(suite in result.stderr, bool(code))
 
@@ -53,4 +59,10 @@ class AllTestCommand(unittest.TestCase):
         result, calls = self.run_suites(toolchain=1)
         self.assertEqual(result.returncode, 1)
         self.assertEqual(calls, ["web", "python"])
+        self.assertIn("rust workspace", result.stderr)
+
+    def test_preview_failure_does_not_skip_web_and_python(self):
+        result, calls = self.run_suites(preview=4)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(calls, ["rust", "preview", "web", "python"])
         self.assertIn("rust workspace", result.stderr)

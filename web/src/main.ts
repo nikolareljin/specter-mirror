@@ -109,6 +109,9 @@ function setupMirror(canvas: HTMLCanvasElement) {
   }
   const output = view.createImageData(FRAME_WIDTH, FRAME_HEIGHT);
   let shownMessage = '';
+  // The visitor's visit plan follows the engine's timing seed; none means the
+  // original 28 second loop.
+  const sampleSeed = () => (controller.seed === null ? null : (controller.seed ^ 0xa5a5a5a5) >>> 0);
 
   const controller = new MirrorController(
     {
@@ -140,6 +143,7 @@ function setupMirror(canvas: HTMLCanvasElement) {
             FRAME_HEIGHT,
             elapsedMs,
             reducedMotion(),
+            sampleSeed(),
           );
         } else {
           if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
@@ -156,11 +160,18 @@ function setupMirror(canvas: HTMLCanvasElement) {
         const pixels = scratchCtx.getImageData(0, 0, FRAME_WIDTH, FRAME_HEIGHT).data;
         return new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
       },
+      randomSeed() {
+        const words = new Uint32Array(1);
+        crypto.getRandomValues(words);
+        return words[0];
+      },
       observeHead(source: SourceKind, elapsedMs: number) {
         // The generated visitor has known geometry. A camera has no head
         // localizer yet, so it never reports a head.
         if (source !== 'sample') return null;
-        const bounds = sampleHeadBounds(FRAME_WIDTH, FRAME_HEIGHT, elapsedMs, reducedMotion());
+        const bounds = sampleHeadBounds(
+          FRAME_WIDTH, FRAME_HEIGHT, elapsedMs, reducedMotion(), sampleSeed(),
+        );
         return bounds ? { ...bounds, confidence: 1000 } : null;
       },
       render(rgba) {

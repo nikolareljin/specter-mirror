@@ -94,7 +94,7 @@ test('stale request cleanup never exits a different fullscreen element', async (
 });
 
 // Records the head ellipse drawSampleScene emits, with the active transform.
-function recordHead(width, height, elapsed, reduced = false) {
+function recordHead(width, height, elapsed, reduced = false, seed = null) {
   let m = { a: 1, d: 1, e: 0, f: 0 };
   const stack = [];
   const ellipses = [];
@@ -109,7 +109,7 @@ function recordHead(width, height, elapsed, reduced = false) {
     createLinearGradient: () => ({ addColorStop: noop }),
     ellipse: (x, y, rx, ry, rotation) => ellipses.push({ x, y, rx, ry, rotation, m: { ...m } }),
   };
-  drawSampleScene(ctx, width, height, elapsed, reduced);
+  drawSampleScene(ctx, width, height, elapsed, reduced, seed);
   return ellipses[0] ?? null;
 }
 
@@ -205,4 +205,102 @@ test('reduced motion reports the static head and a loop replays it', () => {
   assert.deepEqual(sampleHeadBounds(320, 240, 0, true), still);
   assert.deepEqual(sampleHeadBounds(320, 240, 12_345, true), still);
   assert.deepEqual(sampleHeadBounds(320, 240, 8_000 + 28_000, false), still);
+});
+
+import { sampleSchedule } from '../src/sample.ts';
+
+const visitorSeed = (seed) => (seed ^ 0xa5a5a5a5) >>> 0;
+
+test('seeded visitor schedules are deterministic, bounded and much longer than the old loop', () => {
+  const lengths = new Set();
+  for (let seed = 0; seed < 50; seed += 1) {
+    const a = sampleSchedule(visitorSeed(seed));
+    const b = sampleSchedule(visitorSeed(seed));
+    assert.deepEqual(a, b);
+    lengths.add(a.length);
+    assert.ok(a.length > 120_000 && a.length < 400_000, `${seed}: ${a.length}`);
+    const kinds = a.segments.map((s) => s.kind);
+    assert.equal(kinds.filter((k) => k === 'enter').length, 4);
+    assert.equal(kinds.filter((k) => k === 'leave').length, 4);
+    let at = 0;
+    for (const segment of a.segments) {
+      assert.equal(segment.start, at);
+      at += segment.duration;
+      if (segment.kind === 'absent') assert.ok(segment.duration >= 4_000 && segment.duration <= 15_000);
+      if (segment.kind === 'pause') assert.ok(segment.duration >= 1_000 && segment.duration <= 3_000);
+      if (segment.kind === 'move') {
+        assert.ok(segment.duration >= 3_000 && segment.duration <= 6_000);
+        assert.ok([1, 2].includes(segment.periods));
+        assert.ok(segment.amplitude >= 40 && segment.amplitude <= 120);
+      }
+    }
+    assert.equal(at, a.length);
+  }
+  assert.ok(lengths.size > 40, 'different seeds give different schedules');
+});
+
+test('seeded visitor poses are continuous, bounded and loop without a hard cut', () => {
+  for (const seed of [1, 7, 99]) {
+    const s = visitorSeed(seed);
+    const { length } = sampleSchedule(s);
+    let previous = samplePose(0, false, s);
+    for (let t = 50; t <= length + 50; t += 50) {
+      const pose = samplePose(t, false, s);
+      assert.ok(pose.x >= -0.2 && pose.x <= 1.3 && pose.scale >= 0.72 && pose.scale <= 1);
+      if (pose.visible && previous.visible) {
+        assert.ok(Math.abs(pose.x - previous.x) < 0.06, `${seed} t=${t}`);
+      }
+      previous = pose;
+    }
+    assert.deepEqual(samplePose(1234, false, s), samplePose(1234 + length, false, s));
+    assert.deepEqual(samplePose(1e12, false, s), samplePose(1e12, false, s));
+    // Reduced motion ignores the seed and stays static.
+    assert.deepEqual(samplePose(5_000, true, s), samplePose(8_000));
+    assert.deepEqual(samplePose(9_999, false, null), samplePose(9_999));
+  }
+});
+
+test('a seeded visitor keeps a visible, moving head for long stretches', () => {
+  const s = visitorSeed(3);
+  let visible = 0;
+  let moved = 0;
+  let last = null;
+  for (let t = 14_000; t < 54_000; t += 100) {
+    const box = sampleHeadBounds(320, 240, t, false, s);
+    if (box) {
+      visible += 1;
+      if (last && last.x !== box.x) moved += 1;
+    }
+    last = box;
+  }
+  assert.ok(visible > 380, `${visible} of 400 frames show the head`);
+  assert.ok(moved > 150, `${moved} frames move`);
+});
+
+test('head boxes match the Rust preview for the same seed (./dev preview --seed 3)', () => {
+  const s = visitorSeed(3);
+  const expected = [
+    [12_000, null],
+    [14_000, { x: 146, y: 38, width: 46, height: 62 }],
+    [18_000, { x: 137, y: 38, width: 46, height: 62 }],
+    [28_000, { x: 115, y: 39, width: 46, height: 61 }],
+    [54_000, { x: 249, y: 39, width: 46, height: 61 }],
+    [56_000, null],
+    [112_000, { x: 213, y: 39, width: 46, height: 61 }],
+    [114_000, null],
+  ];
+  for (const [time, box] of expected) {
+    assert.deepEqual(sampleHeadBounds(320, 240, time, false, s), box, `t=${time}`);
+  }
+});
+
+test('the generated drawing and its head box use the same seeded pose', () => {
+  const s = visitorSeed(3);
+  for (const time of [14_000, 18_000, 28_000]) {
+    const ellipse = recordHead(320, 240, time, false, s);
+    const bounds = sampleHeadBounds(320, 240, time, false, s);
+    const { minX, maxX, minY, maxY } = outline(ellipse);
+    assert.ok(bounds.x <= minX + 1e-6 && bounds.x + bounds.width >= maxX - 1e-6, `t=${time}`);
+    assert.ok(bounds.y <= minY + 1e-6 && bounds.y + bounds.height >= maxY - 1e-6, `t=${time}`);
+  }
 });

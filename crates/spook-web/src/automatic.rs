@@ -26,6 +26,14 @@ impl Automatic {
         })
     }
 
+    /// Replaces the progression with seeded randomized timing and resets the
+    /// session. The same seed replays the same stage durations.
+    pub fn set_seed(&mut self, seed: u32) -> Result<(), String> {
+        self.progression = HauntProgression::with_seed(seed).map_err(|e| e.to_string())?;
+        self.reset();
+        Ok(())
+    }
+
     pub fn update(
         &mut self,
         gray: &[u8],
