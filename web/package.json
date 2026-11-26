@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "wasm:build": "wasm-pack build ../crates/spook-web --target web --out-dir ../../web/generated --no-opt",
+    "wasm:build": "bash ../scripts/build_wasm.sh",
     "predev": "npm run wasm:build",
     "dev": "vite --host 127.0.0.1",
     "prebuild": "npm run wasm:build",

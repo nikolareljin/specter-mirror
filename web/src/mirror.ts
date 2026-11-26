@@ -49,13 +49,19 @@ export interface EngineLike {
   free(): void;
 }
 
-/** Head bounds in unmirrored processing-frame pixels; confidence is 0..1000. */
+/**
+ * Head bounds in unmirrored processing-frame pixels; confidence is 0..1000.
+ * `observedMs` is the integer elapsed time of the frame the bounds came from.
+ * Sample geometry omits it and uses the current frame time. A camera locator
+ * must supply it, and it is passed to the engine unchanged.
+ */
 export interface HeadObservation {
   x: number;
   y: number;
   width: number;
   height: number;
   confidence: number;
+  observedMs?: number;
 }
 
 export interface MirrorDeps {
@@ -70,9 +76,24 @@ export interface MirrorDeps {
   /**
    * Optional synchronous head provider, called after a successful capture with
    * the same elapsed time as the capture. Null or absent means no observation.
-   * The generated sample supplies its known geometry; a camera supplies none.
+   * The generated sample supplies its known geometry; a camera supplies the
+   * latest fresh locator result, if any. It must never wait for inference.
    */
   observeHead?(source: SourceKind, elapsedMs: number): HeadObservation | null;
+  /**
+   * Optional. Offers the camera's unmirrored processing frame (read only,
+   * never detached or modified) and its integer elapsed time to an optional
+   * local locator. Called only while camera localization is eligible: an
+   * active camera with automatic haunting and skulls on and reduced motion
+   * off. Failures are ignored and never stop the mirror.
+   */
+  offerHeadFrame?(frame: Uint8Array, width: number, height: number, elapsedMs: number): void;
+  /**
+   * Optional. Releases the locator and its pending data. `retry` is true for
+   * a source change, stop or deliberate skull toggle, which may start a
+   * fresh locator later, and false for other preference changes.
+   */
+  releaseHeadTracking?(retry: boolean): void;
   /** Optional unsigned 32-bit seed for each start's randomized timing. */
   randomSeed?(): number;
   render(rgba: Uint8Array): void;
@@ -163,12 +184,14 @@ export class MirrorController {
   setReducedMotion(reduced: boolean): void {
     if (reduced === this.reducedMotion) return;
     this.reducedMotion = reduced;
+    if (reduced) this.releaseTracking(false);
     this.configureTemporal();
   }
 
   setAutomatic(enabled: boolean): void {
     if (enabled === this.automatic) return;
     this.automatic = enabled;
+    if (!enabled) this.releaseTracking(false);
     this.configureTemporal();
     this.emit();
   }
@@ -177,10 +200,20 @@ export class MirrorController {
   setSkull(enabled: boolean): void {
     if (enabled === this.skull) return;
     this.skull = enabled;
+    if (!enabled) this.releaseTracking(true);
     try {
       this.engine?.configure_skull(enabled);
     } catch {
       this.fail('The skull setting could not be applied. Try starting the mirror again.');
+    }
+  }
+
+  /** Optional locator cleanup; it must never interrupt the mirror. */
+  private releaseTracking(retry: boolean): void {
+    try {
+      this.deps.releaseHeadTracking?.(retry);
+    } catch {
+      // Cleanup failures of an optional detector are not mirror failures.
     }
   }
 
@@ -340,10 +373,24 @@ export class MirrorController {
       captureMs = t1 - t0;
       if (frame) {
         const elapsed = Math.floor(t0 - this.startedAt);
+        // Camera localization is eligible only with automatic haunting, skulls
+        // on and reduced motion off; the offered frame is the one rendered.
+        const locating = this.source === 'camera' && this.skull && this.automatic && !this.reducedMotion;
+        if (locating) {
+          try {
+            this.deps.offerHeadFrame?.(frame, FRAME_WIDTH, FRAME_HEIGHT, elapsed);
+          } catch {
+            // An optional detector failure must not reach the fatal path.
+          }
+        }
         if (this.skull && this.automatic) {
-          const head = this.deps.observeHead?.(this.source, t0 - this.startedAt) ?? null;
+          const head = this.source === 'camera' && !locating
+            ? null
+            : this.deps.observeHead?.(this.source, t0 - this.startedAt) ?? null;
           if (head) {
-            this.engine.observe_head(head.x, head.y, head.width, head.height, head.confidence, elapsed);
+            this.engine.observe_head(
+              head.x, head.y, head.width, head.height, head.confidence, head.observedMs ?? elapsed,
+            );
           } else {
             this.engine.clear_head();
           }
@@ -381,6 +428,7 @@ export class MirrorController {
   }
 
   private teardown(): void {
+    this.releaseTracking(true);
     if (this.handle !== null) {
       this.deps.cancel(this.handle);
       this.handle = null;

@@ -133,3 +133,13 @@ claims about features available in the current application.
     recognition. Test off-center bounds, occlusion, stale observations,
     multiple candidates and matching crop/mirror transforms. Verify physical
     alignment separately on the actual webcam.
+
+Browser camera localization (implemented, not hardware-verified): the web page
+may run the licensed SeetaFace frontal-face detector (rustface, no thread pool)
+in a module worker, only for a user-started camera with automatic haunting and
+skulls on and reduced motion off. At most one 160 x 120 grayscale request is in
+flight, submitted at least 200 ms apart, with 8000 ms initialization and
+1500 ms inference timeouts. Results keep the captured frame's original
+timestamp, expire after 500 ms and are never re-stamped. Failure disables only
+localization, with a visible status. Frontal faces can be missed. Accuracy,
+cost and physical alignment on the actual webcam remain unmeasured.

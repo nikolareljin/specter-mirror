@@ -2,6 +2,10 @@
 use spook_core::{copy_mirrored_rgb24, FrameError, RgbFrame};
 mod engine;
 pub use engine::{MirrorEngine, MAX_HEIGHT, MAX_WIDTH, MODE_MIRROR, MODE_PORTRAIT, MODE_SPECTRAL};
+#[cfg(feature = "face-detection")]
+mod face_locator;
+#[cfg(feature = "face-detection")]
+pub use face_locator::{BrowserFaceDetector, MAX_DETECT_HEIGHT, MAX_DETECT_WIDTH};
 
 pub fn synthetic_frame_proof() -> Result<[u32; 2], FrameError> {
     let bytes = [255, 0, 0, 0, 255, 0];

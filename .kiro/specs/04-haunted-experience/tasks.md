@@ -11,6 +11,11 @@ and verification. Keep execution evidence in `docs/KIRO-DEVELOPMENT.md`.
 - [x] Integrate a shared clear-opening intensity envelope with automatic
   temporal/palette processing and manual fallback. Verify gradual recovery,
   reduced motion, warm history, source reset and hidden-page cleanup.
+- [x] Add optional browser camera head localization: worker-run rustface face
+  detector, bounded single-flight requests, original-timestamp observations and
+  lifecycle cleanup. Verified by host, WASM and Node tests and a browser lifecycle
+  check with generated camera input; real-face accuracy and physical webcam
+  alignment remain unverified (see the last task).
 - [ ] Add independent procedural ghost/skull geometry, distortion, frost,
   vignette and palettes, with original golden fixtures at both processing sizes.
 - [ ] Add validated recipe composition and deterministic order; test independent

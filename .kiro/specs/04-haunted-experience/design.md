@@ -39,6 +39,14 @@ validated localizer observation (source bounds, confidence and timestamp),
 not a motion centroid. Suppress stale or uncertain observations and transform
 bounds through the same crop/reflection as pixels. Keep localization optional
 and outside the frame hot loop; select its backend only after target testing.
+The browser adapter runs rustface with the bundled SeetaFace model in a worker
+with its own WASM instance. A tracker owns one in-flight request, a 200 ms
+cadence, a generation and request id, timeouts and a single latest observation
+with the original frame time. It widens the face to a head box with integer
+arithmetic, scales it into the unmirrored processing frame and leaves
+mirroring to the engine. `MirrorController` offers frames and reads the latest
+fresh result through optional dependencies, so failures never become mirror
+failures. This is a browser-only backend; native localization is unchanged.
 No identity recognition is required. Frost and vignette are
 cheap spatial treatments with bounded animation; distortion uses integer
 sampling and clamps every source coordinate. Compose into caller-owned buffers.
