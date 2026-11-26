@@ -52,6 +52,14 @@ checked at both processing sizes, with browser sample and simulated-camera
 cleanup checks. The session reported manual commands and no hook execution.
 Camera head localization and physical alignment remain unverified.
 
+The seeded-timing and desktop-preview extension adds deterministic timing
+seeds, longer generated visits and a development-only local face detector.
+Review added cadence-independent fractional accumulation, bounded detector
+results, worker shutdown and argument-validation checks. The X11 preview,
+PNG output and camera-child cleanup were exercised with generated frames;
+the production WASM was checked for seed replay and reduced motion. These
+checks do not establish physical-camera alignment or target performance.
+
 The hook definitions target the installed Kiro IDE 0.11.107 surface:
 `.kiro/hooks/*.kiro.hook`, `when.type: userTriggered` and
 `then.type: runCommand` with a literal command. The installed runtime's

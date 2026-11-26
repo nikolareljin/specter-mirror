@@ -27,6 +27,7 @@ rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy --t
 ./dev test
 ./dev all-test
 ./dev native-proof
+./dev preview --camera          # development webcam preview; requires ffmpeg and X11
 ./check
 cd web
 npm ci

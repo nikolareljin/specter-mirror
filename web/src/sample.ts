@@ -9,9 +9,79 @@ export interface SamplePose {
 const CYCLE_MS = 28_000;
 const ease = (t: number) => t * t * (3 - 2 * t);
 
-/** Original generated visitor: enter, move, hold still, then leave. */
-export function samplePose(elapsedMs: number, reducedMotion = false): SamplePose {
+// Seeded visits: the visitor arrives after a quiet gap, keeps moving for a
+// while with short pauses, then leaves. A fixed number of visits make one
+// loop of roughly four minutes, so sampling stays bounded for any clock value.
+// Integer arithmetic only, mirrored by the Rust preview example.
+const VISITS = 4;
+const ENTER_MS = 3_000;
+const LEAVE_MS = 3_000;
+
+type SegmentKind = 'absent' | 'enter' | 'move' | 'pause' | 'leave';
+interface Segment {
+  kind: SegmentKind;
+  start: number;
+  duration: number;
+  /** Whole sway periods and amplitude in thousandths of the frame width. */
+  periods: number;
+  amplitude: number;
+}
+interface Schedule {
+  segments: Segment[];
+  length: number;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return (t ^ (t >>> 14)) >>> 0;
+  };
+}
+
+let cachedSchedule: { seed: number; schedule: Schedule } | null = null;
+
+/** The seeded visit plan: gaps 4-15 s, visits 36-75 s, pauses of 1-3 s. */
+export function sampleSchedule(seed: number): Schedule {
+  const normalized = seed >>> 0;
+  if (cachedSchedule && cachedSchedule.seed === normalized) return cachedSchedule.schedule;
+  const next = mulberry32((normalized ^ 0x5eed5eed) >>> 0);
+  const between = (lo: number, hi: number) => lo + (next() % (hi - lo + 1));
+  const segments: Segment[] = [];
+  let at = 0;
+  const push = (kind: SegmentKind, duration: number, periods = 0, amplitude = 0) => {
+    segments.push({ kind, start: at, duration, periods, amplitude });
+    at += duration;
+  };
+  for (let visit = 0; visit < VISITS; visit += 1) {
+    push('absent', between(4_000, 15_000));
+    push('enter', ENTER_MS);
+    const body = between(30_000, 60_000);
+    const bodyEnd = at + body;
+    while (at < bodyEnd) {
+      push('move', between(3_000, 6_000), 1 + (next() % 2), between(40, 120));
+      push('pause', between(1_000, 3_000));
+    }
+    push('leave', LEAVE_MS);
+  }
+  const schedule = { segments, length: at };
+  cachedSchedule = { seed: normalized, schedule };
+  return schedule;
+}
+
+/**
+ * Original generated visitor. Without a seed: enter, move, hold still, then
+ * leave on a fixed 28 second loop. With a seed: the longer random schedule
+ * from `sampleSchedule`. Reduced motion is always the static pose.
+ */
+export function samplePose(
+  elapsedMs: number, reducedMotion = false, seed: number | null = null,
+): SamplePose {
   const safeTime = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  if (seed !== null && !reducedMotion) return seededPose(safeTime, seed);
   const t = reducedMotion ? 8_000 : safeTime % CYCLE_MS;
   if (t < 3_000) {
     const progress = ease(t / 3_000);
@@ -27,6 +97,35 @@ export function samplePose(elapsedMs: number, reducedMotion = false): SamplePose
   if (t < 14_000) return { visible: true, x: 0.52 + ease((t - 11_000) / 3_000) * 0.78,
     scale: 1, arm: 0.2, turn: 0.08 };
   return { visible: false, x: 1.3, scale: 1, arm: 0.2, turn: 0.08 };
+}
+
+function seededPose(time: number, seed: number): SamplePose {
+  const { segments, length } = sampleSchedule(seed);
+  const t = Math.floor(time) % length;
+  let index = segments.length - 1;
+  for (let i = 0; i < segments.length; i += 1) {
+    if (t < segments[i].start + segments[i].duration) { index = i; break; }
+  }
+  const segment = segments[index];
+  const local = t - segment.start;
+  const progress = local / segment.duration;
+  switch (segment.kind) {
+    case 'enter': {
+      const p = ease(progress);
+      return { visible: true, x: -0.2 + p * 0.72, scale: 0.72 + p * 0.28, arm: 0.2, turn: -0.06 };
+    }
+    case 'move': {
+      const phase = progress * Math.PI * 2 * segment.periods;
+      return { visible: true, x: 0.52 + Math.sin(phase) * (segment.amplitude / 1000), scale: 1,
+        arm: 0.2 + (1 - Math.cos(phase)) * 0.35, turn: Math.sin(phase) * 0.1 };
+    }
+    case 'pause':
+      return { visible: true, x: 0.52, scale: 1, arm: 0.2, turn: 0 };
+    case 'leave':
+      return { visible: true, x: 0.52 + ease(progress) * 0.78, scale: 1, arm: 0.2, turn: 0.08 };
+    default:
+      return { visible: false, x: 1.3, scale: 1, arm: 0.2, turn: 0.08 };
+  }
 }
 
 export interface HeadBounds {
@@ -53,9 +152,10 @@ const BODY_ORIGIN_Y = 0.55;
  */
 export function sampleHeadBounds(
   width: number, height: number, elapsedMs: number, reducedMotion: boolean,
+  seed: number | null = null,
 ): HeadBounds | null {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-  const pose = samplePose(elapsedMs, reducedMotion);
+  const pose = samplePose(elapsedMs, reducedMotion, seed);
   if (!pose.visible) return null;
   const cos = Math.cos(pose.turn);
   const sin = Math.sin(pose.turn);
@@ -79,9 +179,9 @@ export function sampleHeadBounds(
 
 export function drawSampleScene(
   ctx: CanvasRenderingContext2D, width: number, height: number,
-  elapsedMs: number, reducedMotion: boolean,
+  elapsedMs: number, reducedMotion: boolean, seed: number | null = null,
 ): void {
-  const pose = samplePose(elapsedMs, reducedMotion);
+  const pose = samplePose(elapsedMs, reducedMotion, seed);
   ctx.save();
   ctx.scale(width, height);
   const room = ctx.createLinearGradient(0, 0, 0, 1);

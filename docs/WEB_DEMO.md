@@ -29,15 +29,75 @@ Blend: `(original * (255 - i) + processed * i + 127) / 255`.
 
 ## Dynamic reflection
 
-Automatic haunting is enabled initially. The shared Rust progression holds a
-clear reflection for five seconds from the first frame, then builds temporal
-and spectral intensity over six seconds when motion has established interaction.
-Stillness gets a ten-second grace period before a fade to clear taking up to
-three seconds, depending on current intensity.
+Automatic haunting is enabled initially. The page draws a random 32-bit seed
+for each started source; the shared Rust progression uses it to pick a clear
+opening, a rise, a stillness grace and a return, each between 4 and 15 seconds.
+The opening stays a clear mirror. Motion that establishes interaction then
+raises temporal and spectral intensity along a smoothstep curve, so it starts
+and ends gently. After the grace of stillness it eases back to a clear mirror.
+A completed return draws fresh durations for the next visit. The same seed,
+frames and times replay the same timing; `MirrorController.seed` holds it for
+logging. Without a seed (no provider, or the core used directly) the original
+fixed cycle applies: five seconds clear, six up, a ten-second grace and three
+down, linearly. Starting a source draws a new seed. Preference changes restart the visit
+with the same initial durations.
+
+The generated visitor follows the same seed. With a seed it makes four visits
+in a loop of roughly four minutes: a quiet gap of 4 to 15 seconds, an entrance,
+30 to 69 seconds of movement blocks with 1 to 3 second pauses, then an exit. The
+visitor's plan is derived from the seed, so one seed replays one sequence. Its
+head box follows the same plan, and the skull appears during the long visits.
+Without a seed, or with reduced motion on, the original 28-second loop and
+static pose apply.
+
+### Offline preview
+
+`./dev preview` runs the same engine without a browser or camera. By default
+it opens an X11 window and plays a generated visitor from the same plan live,
+so you can watch the clear opening, the filter, the skull and the return. The
+window title shows time, state, effect strength and skull opacity, and state
+changes are printed. Space pauses, K toggles the skull, Escape or Q quits.
+Saved output requires a new or empty directory. An explicit `--out` directory
+must already exist; the default is created. Parent traversal is rejected.
+Existing files are never replaced.
+
+```bash
+./dev preview --seed 3                    # live window, real time, 2x zoom
+./dev preview --seed 3 --speed 4          # four times faster
+./dev preview --seed 7 --scale 4 --no-skull
+./dev preview --camera                    # your webcam, filters and skull on your face
+./dev preview --camera /dev/video2 --show-face
+./dev preview --seed 3 --save --open      # PNG frames and an index.html viewer
+./dev preview --seed 3 --no-frames        # timeline only, no window or files
+./dev preview --help
+```
+
+`--camera` reads the webcam through a local `ffmpeg` process (no network,
+nothing saved), crops it to 4:3 and runs the same automatic filters, delay,
+ghost trails and seeded timing. A local frontal-face detector (rustface with
+the bundled SeetaFace model) runs on its own thread at half resolution, always
+on the newest frame, and supplies the skull's head box: the face box widened
+by 10% each side and extended 30% upward, clamped to the frame. Detections
+with score 2 or more map to confidence 800 to 1000 and carry their frame's
+time, so the engine's 500 ms age limit and immediate hiding apply. It finds a
+face's position; it does not identify anyone. `--show-face` outlines the
+detected face in green. Detection cost must be measured on the actual host.
+Side profiles, dim light and fast movement can lose the
+face, and the skull then disappears. `--speed` is rejected with
+`--camera`, because a faster clock would make every detection too old. The
+detector exists only in this preview: the web page and native application
+still have no face localizer, so the page shows no skull on camera frames.
+The window needs an X11 `DISPLAY`; without one, use `--save`, or
+`xvfb-run -a ./dev preview --seconds 30` for a headless smoke test. The Rust
+visitor approximates the page's drawing; its head boxes agree with
+`sampleHeadBounds` for the same seed. The output is for inspection, not a
+measurement. The window uses minifb, the same pinned crate as the native
+application, as a development-only dependency of `spook-web`.
+
 Renewed motion during recovery keeps the current intensity instead of jumping.
 Motion measures changed pixels, not a face or a person's presence; uniform
-lighting changes can also trigger it. This first automatic treatment is fixed;
-seeded event selection remains a separate requirement. Head-aligned skulls are
+lighting changes can also trigger it. Timing is seeded; event-type selection
+remains a separate requirement. Head-aligned skulls are
 described under Skull apparitions.
 
 Turn automatic haunting off for manual settings. Its preferences, source

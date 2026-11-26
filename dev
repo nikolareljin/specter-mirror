@@ -17,11 +17,14 @@
 #   docs-check    Check documentation links and print a review reminder.
 #   native-proof  Render a synthetic frame in an X11 window, then exit.
 #   native        Animate the generated native sample until Escape.
+#   preview [..]  Play the web engine live in an X11 window on a generated visitor (--save
+#                 writes PNG frames and a viewer). Options: ./dev preview --help.
 #   -h, --help    Print this header without checking or building anything.
 # REQUIREMENTS:
 #   Rust commands need rustup and the toolchain in rust-toolchain.toml.
 #   i686 native commands also need gcc-multilib and libc6-dev-i386 on Ubuntu.
-#   native and native-proof need X11; use xvfb-run for a virtual display.
+#   native, native-proof and preview need X11; use xvfb-run for a virtual display.
+#   preview --camera also needs ffmpeg and access to the /dev/video device.
 #   docs-check needs Python 3. Help needs only Bash and sed.
 #   all-test also needs Python 3 and Node.js; install web dependencies with npm ci --prefix web.
 # EXAMPLES:
@@ -29,6 +32,7 @@
 #   ./dev core-test
 #   ./dev all-test
 #   ./dev wasm-check
+#   ./dev preview --camera --show-face
 #   ./dev build-i686
 #   xvfb-run -a ./dev native-proof
 # EXIT_CODES:
@@ -45,12 +49,12 @@ if [[ $# -eq 1 && ( "$1" == -h || "$1" == --help ) ]]; then
   show_help
   exit 0
 fi
-if [[ $# -gt 1 ]]; then
+if [[ $# -gt 1 && "$1" != preview ]]; then
   echo "Too many arguments. See ./dev --help for usage." >&2
   exit 2
 fi
 case "${1:-check}" in
-  check|test|all-test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|native-proof|native) ;;
+  check|test|all-test|build|build-i686|fmt|fmt-check|core-test|wasm-check|i686-check|deps-check|native-proof|native|preview) ;;
   docs-check) exec python3 "$(dirname "${BASH_SOURCE[0]}")/scripts/check_docs.py" ;;
   *) echo "Unknown command. See ./dev --help for usage." >&2; exit 2 ;;
 esac
@@ -71,14 +75,18 @@ compiler="$(rustup which --toolchain 1.99.1 rustc)"
 toolchain_bin="$(dirname "$compiler")"
 export RUSTC="$compiler"
 export PATH="$toolchain_bin:$PATH"
+run_tests() {
+  cargo test --locked --workspace
+  cargo test --locked -p spook-web --example preview
+}
 case "${1:-check}" in
   check)
     cargo fmt --all -- --check
     cargo clippy --locked --workspace --all-targets -- -D warnings
-    cargo test --locked --workspace
+    run_tests
     cargo check --locked -p spook-core -p spook-web --target wasm32-unknown-unknown
     cargo check --locked --workspace --target i686-unknown-linux-gnu ;;
-  test) cargo test --locked --workspace ;;
+  test) run_tests ;;
   build) cargo build --locked --workspace ;;
   build-i686)
     mirror_cargo_dir="${CARGO_HOME:-$HOME/.cargo}"
@@ -103,4 +111,6 @@ case "${1:-check}" in
   deps-check) cargo tree --locked --workspace --duplicates ;;
   native-proof) cargo run --locked -p spook-kiosk -- --self-test ;;
   native) cargo run --locked -p spook-kiosk ;;
+  # Release build: the face detector is far too slow unoptimized.
+  preview) shift; cargo run --locked --quiet --release -p spook-web --example preview -- "$@" ;;
 esac
