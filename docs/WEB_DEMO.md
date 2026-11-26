@@ -57,6 +57,8 @@ it opens an X11 window and plays a generated visitor from the same plan live,
 so you can watch the clear opening, the filter, the skull and the return. The
 window title shows time, state, effect strength and skull opacity, and state
 changes are printed. Space pauses, K toggles the skull, Escape or Q quits.
+Pausing a camera freezes the display while its observation clock continues,
+so a detection from before the pause expires normally on resume.
 Saved output requires a new or empty directory. An explicit `--out` directory
 must already exist; the default is created. Parent traversal is rejected.
 Existing files are never replaced.

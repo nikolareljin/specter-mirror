@@ -76,6 +76,6 @@ jobs:
     name: Foxguard
     uses: nikolareljin/ci-helpers/.github/workflows/foxguard-scan.yml@production
     with:
-      foxguard_version: v0.14.1
+      foxguard_version: v0.14.2
       severity: low
       fail_on_findings: true

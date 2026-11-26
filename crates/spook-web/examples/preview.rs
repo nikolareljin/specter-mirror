@@ -179,6 +179,12 @@ fn output_directory(value: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn advance_clock(clock: &mut f64, elapsed_ms: f64, speed: u64, paused: bool, camera: bool) {
+    if !paused || camera {
+        *clock += elapsed_ms * speed as f64;
+    }
+}
+
 fn write_new(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let mut file = fs::OpenOptions::new()
@@ -1108,8 +1114,8 @@ fn live(o: &Options) -> Result<(), String> {
             sim.toggle_skull()?;
             println!("skull {}", if sim.skull { "on" } else { "off" });
         }
+        advance_clock(&mut clock, dt, o.speed, paused, camera.is_some());
         if !paused {
-            clock += dt * o.speed as f64;
             let time = clock as u64;
             if o.seconds.is_some_and(|s| time >= s * 1000) {
                 break;
@@ -1292,6 +1298,17 @@ fn main() -> ExitCode {
 #[cfg(all(test, not(any(target_arch = "x86", target_arch = "wasm32"))))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paused_camera_time_expires_old_detections() {
+        let mut camera_clock = 100.0;
+        let mut sample_clock = 100.0;
+        advance_clock(&mut camera_clock, 501.0, 1, true, true);
+        advance_clock(&mut sample_clock, 501.0, 1, true, false);
+        assert_eq!(camera_clock, 601.0);
+        assert!(camera_clock - 100.0 > 500.0);
+        assert_eq!(sample_clock, 100.0);
+    }
 
     #[test]
     fn output_validation_and_writes_preserve_existing_files() {
