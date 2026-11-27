@@ -88,3 +88,14 @@ Generated-camera page checks use scripted head observations to isolate
 placement and lifecycle behavior; they do not measure detector accuracy.
 Physical webcam alignment and target-laptop resource acceptance remain open.
 The session reported no hook execution.
+
+The native kiosk now supports opt-in RGB24/YUYV V4L2 capture through pinned
+v4l 0.14.0, with bounded newest-frame storage, sample fallback and joined
+shutdown. Native tests cover format negotiation, padded rows, conversion,
+mirroring, timeout recovery, sequence wrap, source resets and cleanup. Review
+replaced private-index startup assumptions with finite public-API waits and
+added explicit bindgen prerequisites to CI. A synthetic V4L2 interface tested
+the actual backend with fewer granted buffers, repeated startup timeouts,
+frame delivery, disconnect fallback and Escape exit. This is generated input,
+not physical camera validation. The session reported no hook execution;
+antiX execution, laptop performance and actual camera acceptance remain open.

@@ -8,3 +8,4 @@ rust-version.workspace = true
 [dependencies]
 spook-core = { path = "../spook-core" }
 minifb = { version = "=0.29.0", default-features = false, features = ["x11"] }
+v4l = { version = "=0.14.0", default-features = false, features = ["v4l2"] }
