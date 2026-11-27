@@ -59,6 +59,7 @@ struct Slot {
     meta: FrameMeta,
     unread: bool,
     last: Option<FrameMeta>,
+    last_driver_us: Option<u64>,
     counters: Counters,
 }
 
@@ -90,6 +91,7 @@ impl LatestFrame {
                 },
                 unread: false,
                 last: None,
+                last_driver_us: None,
                 counters: Counters::default(),
             }),
         })
@@ -113,7 +115,7 @@ impl LatestFrame {
         let mut slot = self.lock();
         if let Some(last) = slot.last {
             let driver_regressed = matches!(
-                (last.driver_us, meta.driver_us),
+                (slot.last_driver_us, meta.driver_us),
                 (Some(before), Some(now)) if now <= before
             );
             let sequence_delta = meta.sequence.wrapping_sub(last.sequence);
@@ -132,6 +134,9 @@ impl LatestFrame {
         slot.unread = true;
         slot.meta = meta;
         slot.last = Some(meta);
+        if let Some(driver_us) = meta.driver_us {
+            slot.last_driver_us = Some(driver_us);
+        }
         slot.counters.published += 1;
         Ok(())
     }
@@ -284,6 +289,28 @@ mod tests {
             Ok(Taken::Frame(meta(11, 100, None, 8)))
         );
         assert_eq!(consumer, vec![2; 8]);
+    }
+
+    #[test]
+    fn missing_driver_stamp_does_not_erase_the_last_known_timestamp() {
+        let (exchange, mut back, mut consumer) = fixture();
+        exchange
+            .publish(&mut back, meta(1, 10, Some(100), 8))
+            .unwrap();
+        exchange.publish(&mut back, meta(2, 11, None, 8)).unwrap();
+        for stamp in [50, 100] {
+            assert_eq!(
+                exchange.publish(&mut back, meta(3, 12, Some(stamp), 8)),
+                Err(PublishError::Regressed)
+            );
+        }
+        exchange
+            .publish(&mut back, meta(3, 12, Some(101), 8))
+            .unwrap();
+        assert_eq!(
+            exchange.take(12, &mut consumer),
+            Ok(Taken::Frame(meta(3, 12, Some(101), 8)))
+        );
     }
 
     #[test]
