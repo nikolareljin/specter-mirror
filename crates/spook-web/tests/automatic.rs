@@ -16,25 +16,45 @@ fn frame(time: u64) -> [u8; 8] {
 }
 
 #[test]
-fn opening_matches_clear_mirror_then_uses_warm_history_at_literal_pixels() {
+fn opening_is_clear_then_only_director_selected_layers_reach_literal_pixels() {
     let mut engine = automatic();
     let mut clear = MirrorEngine::new(2, 1).unwrap();
-    for time in (0..=8000).step_by(100) {
+    // Literal output pixel (red channel; both pixels and channels are equal)
+    // at selected times. Unseeded session: fixed progression, director seed 0,
+    // no head. Frames alternate black (even 100 ms index) and white.
+    let literal = |time: u64| -> Option<u8> {
+        match time {
+            // Progression strength 1500 (palette weight 35), director neutral:
+            // the selection frame shows the current white frame, not the
+            // delayed black one the old progression-scaled path produced.
+            6500 => Some(220),
+            // First positive snapshot: LAG|ECHO with delay 11 ms and trail 2
+            // read the white frame 100 ms earlier; palette weight 37.
+            6600 => Some(218),
+            // Event over, neutral again, full-strength palette on white.
+            12_900 => Some(115),
+            // ECHO only (delay 0): the current black frame stays black. The
+            // old path delayed it 250 ms onto a white frame.
+            21_000 => Some(0),
+            // LAG only (37 ms) shows the previous black frame instead of white.
+            29_300 => Some(0),
+            _ => None,
+        }
+    };
+    for time in (0..=30_000).step_by(100) {
         let input = frame(time);
         let output = engine.process_automatic_rgba(&input, time as f64).unwrap();
         if time <= 5000 {
             assert_eq!(output, clear.process_rgba(&input, MODE_MIRROR, 0).unwrap());
             assert_eq!(engine.haunt_strength(), 0);
         }
+        if let Some(red) = literal(time) {
+            assert_eq!(output, [red, red, red, 255, red, red, red, 255], "t={time}");
+        }
     }
-    assert_eq!(engine.haunt_strength(), 3000);
+    assert_eq!(engine.haunt_strength(), 6000);
     assert_eq!(engine.motion_activity(), 1000);
     assert_eq!(engine.haunt_state(), 3);
-    // At 8050: delay127 -> sample7900; trail target7723 -> sample7700.
-    // Both stored frames are white. Spectral weight71 yields 255-71=184.
-    let output = engine.process_automatic_rgba(&[64; 8], 8050.0).unwrap();
-    assert_eq!(output, [184, 184, 184, 255, 184, 184, 184, 255]);
-    assert_eq!(engine.haunt_strength(), 3050);
 }
 
 #[test]

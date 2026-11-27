@@ -161,7 +161,9 @@ impl MirrorEngine {
         Ok(())
     }
 
-    /// Uses raw-frame motion and the shared progression before temporal/palette processing.
+    /// Uses raw-frame motion and the shared progression for the opening, phase
+    /// and palette intensity. The `HauntDirector` selects delayed reflection,
+    /// ghost trails and the skull; its snapshot drives the shared history.
     pub fn process_automatic_rgba(
         &mut self,
         input: &[u8],
@@ -176,22 +178,26 @@ impl MirrorEngine {
         let frame = RgbFrame::new(self.width, self.height, self.width * 3, &self.rgb)
             .map_err(|e| e.to_string())?;
         grayscale_rgb24(&frame, &mut self.gray).map_err(|e| e.to_string())?;
+        let head_available = self.skull.head_available(now);
         let automatic = self
             .automatic
             .as_mut()
             .ok_or("automatic reflection is not configured")?;
-        let level = automatic.update(
+        let (level, snapshot) = automatic.update(
             &self.gray,
             self.width,
             self.height,
             now,
             self.reduced_motion,
+            head_available,
         )?;
         let scale =
             |maximum: u32| maximum * u32::from(level.strength) / u32::from(HAUNT_FULL_STRENGTH);
+        // The director alone selects temporal layers; an unselected layer is
+        // already zero in the snapshot. History records raw frames either way.
         let options = TemporalOptions {
-            delay_ms: scale(250) as u16,
-            trail_strength: scale(120) as u8,
+            delay_ms: snapshot.delay_ms,
+            trail_strength: snapshot.trail_strength,
         };
         let history = self
             .temporal
@@ -216,16 +222,18 @@ impl MirrorEngine {
             self.width,
             self.height,
             now,
-            level.strength,
+            snapshot,
             self.reduced_motion,
         )?;
         Ok(output)
     }
 
     /// Draws each visit's clear opening, rise, hold and return from `seed`
-    /// (4 to 15 seconds each, eased). The host supplies the seed; the same
-    /// seed replays the same timing. Resets the automatic session and skull
-    /// state but keeps temporal history storage. Requires `configure_automatic`.
+    /// (4 to 15 seconds each, eased) and seeds the event director with it. The
+    /// host supplies the seed; the same seed replays the same timing and event
+    /// selections. Without this call the progression keeps its fixed timing and
+    /// the director uses seed 0. Resets the automatic session and skull state
+    /// but keeps temporal history storage. Requires `configure_automatic`.
     pub fn configure_seed(&mut self, seed: u32) -> Result<(), String> {
         let automatic = self
             .automatic
@@ -240,7 +248,8 @@ impl MirrorEngine {
     /// The scratch frame is allocated here, never while processing; failure
     /// preserves every setting. Identical settings change nothing. A real
     /// change clears skull observations and events, not temporal history or
-    /// the automatic envelope.
+    /// the automatic envelope. The director is not reset: with no head it
+    /// cancels an active skull event and its normal cooldown applies.
     pub fn configure_skull(&mut self, enabled: bool) -> Result<(), String> {
         self.skull.configure(enabled, self.gray.len())
     }

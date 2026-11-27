@@ -73,3 +73,18 @@ Record genuine completed work here with: spec/task, Kiro version and surface,
 changed files, observed hook commands/results, produced tests, architecture
 changes and reviewed commit or PR. Keep raw sessions and account data out of
 the source. Do not mark tasks complete without implementation evidence.
+
+Browser automatic output now consumes the shared director's temporal requests
+and renders one 3200 ms skull apparition per selected event. The progression
+still controls palette strength. Session seeds and resets replay both policies;
+skull toggles preserve temporal history and progression. Public WASM signatures
+and browser controls are unchanged.
+
+Integration verification includes independent expected pixels, replay/seed
+variation, neutral opening, event cooldowns, invalid-input twins, cancellation,
+reset behavior and production WASM at 160 x 120 and 320 x 240. The production
+detector worker initializes and returns no face for a generated blank frame.
+Generated-camera page checks use scripted head observations to isolate
+placement and lifecycle behavior; they do not measure detector accuracy.
+Physical webcam alignment and target-laptop resource acceptance remain open.
+The session reported no hook execution.
