@@ -1,21 +1,25 @@
-//! Head observations and the timed skull event for the browser engine.
+//! Head observations and the skull apparition for the browser engine.
 //!
 //! The layer owns one fallibly allocated RGBA scratch frame and fixed
 //! metadata. It never infers a head from motion: bounds come only from
-//! `observe`, in unmirrored processing-frame pixels.
+//! `observe`, in unmirrored processing-frame pixels. It does not select or
+//! schedule events. The `HauntDirector` decides when SKULL is selected and
+//! owns eligibility and cooldowns; this layer only draws one short apparition
+//! for each director event that selects SKULL.
 //!
 //! # Placement
 //!
-//! An observation is usable at processing time `now` only when its confidence
-//! is at least 800 (of 1000), `observed <= now`, and `now - observed <= 500`
-//! ms. Order is checked before subtraction. Bounds are stored unmirrored and
-//! transformed once, at render time: `output_x = frame_width - x - width`.
+//! An observation is usable at processing time `now` only when the layer is
+//! enabled, its confidence is at least 800 (of 1000), `observed <= now`, and
+//! `now - observed <= 500` ms. Order is checked before subtraction. The same
+//! test feeds the director's `head_available` and the renderer. Bounds are
+//! stored unmirrored and transformed once, at render time:
+//! `output_x = frame_width - x - width`.
 //!
-//! # Event timeline
+//! # Apparition
 //!
-//! Eligible frames need automatic haunting (the caller), shared strength of at
-//! least 1500, usable placement and reduced motion off. The first eligible
-//! frame starts an event at `t = 0`:
+//! The apparition starts at the first frame whose `DirectorSnapshot` selects
+//! SKULL with positive strength, at `t = 0`:
 //!
 //! ```text
 //! 0..1200 ms      fade in   ramp = t
@@ -26,24 +30,54 @@
 //!
 //! `opacity = (96 * ramp * min(strength, 6000) + 3_600_000) / 7_200_000`,
 //! which is 96 * (ramp / 1200) * (strength / 6000) rounded half up in
-//! integers. The maximum is 96 (the core renderer accepts up to 128).
+//! integers. `strength` is the snapshot's strength, which already contains the
+//! progression strength; it is not multiplied by progression again. The
+//! maximum opacity is 96 (the core renderer accepts up to 128). The director's
+//! selection frame carries a neutral snapshot, so it never draws a skull.
 //!
-//! A natural end starts the 8000 ms cooldown at `start + 3200`. Losing
-//! eligibility (placement, strength, reduced motion) cancels the event on that
-//! frame and starts the cooldown at that frame's time. `clear_head` cancels
-//! immediately and starts the cooldown at the next processed frame. The
-//! cooldown is one deadline, so a large clock jump yields at most one new
-//! event on the first eligible frame after it; missed events never replay.
-use spook_core::{render_skull_rgba, OverlayRect, SkullOptions, HAUNT_FULL_STRENGTH};
+//! # One apparition per director event
+//!
+//! The snapshot carries no event id. The identity of an event is recovered
+//! from the director's published policy instead: a SKULL event lasts 4000 to
+//! 8000 ms, and a new event using the SKULL layer cannot be selected until
+//! 8000 ms after the previous one finished, which is itself no earlier than
+//! the previous event's last positive snapshot. Consider two positive SKULL
+//! snapshots at `p < t` with `p` the latest previous one:
+//!
+//! * the same event: both lie inside one event, so `t - p < 8000`;
+//! * different events: `t - p > 8000`.
+//!
+//! The layer therefore keeps `last_positive` and a `consumed` latch. A
+//! positive SKULL snapshot with `t - last_positive >= 8000` (or none yet)
+//! begins a new event and clears the latch; any other positive snapshot is the
+//! same event. The latch is set by the first positive snapshot and stays set
+//! when the 3200 ms window ends, when strength rounds to zero (a neutral
+//! snapshot changes neither `last_positive` nor the latch) and when the head
+//! briefly returns. Repeated or equal timestamps give `t - last_positive = 0`
+//! and cannot rearm. Large jumps are one frame: at most one apparition starts,
+//! and missed ones are never replayed.
+//!
+//! # Cancellation
+//!
+//! A neutral snapshot, reduced motion, an unusable placement or a disabled
+//! layer draws nothing. `clear_head` and a real enable/disable change drop the
+//! observation and the apparition at once and make the next frame report the
+//! head as unavailable to the director exactly once. The director then ends
+//! any active event and applies its normal cooldown, even if the host
+//! observes a head again before that frame. The director is never reset.
+use spook_core::{
+    render_skull_rgba, DirectorSnapshot, OverlayRect, SkullOptions, HAUNT_FULL_STRENGTH, SKULL,
+};
 
 pub(crate) const MIN_CONFIDENCE: u16 = 800;
 pub(crate) const MAX_CONFIDENCE: u16 = 1000;
 pub(crate) const MAX_AGE_MS: u64 = 500;
-pub(crate) const MIN_STRENGTH: u16 = 1500;
 pub(crate) const FADE_MS: u64 = 1200;
 pub(crate) const HOLD_MS: u64 = 800;
 pub(crate) const EVENT_MS: u64 = FADE_MS + HOLD_MS + FADE_MS;
-pub(crate) const COOLDOWN_MS: u64 = 8000;
+/// Minimum gap between positive SKULL snapshots of different director events
+/// (the director's per-layer cooldown, exclusive of the event itself).
+pub(crate) const NEW_EVENT_GAP_MS: u64 = 8000;
 pub(crate) const MAX_OPACITY: u64 = 96;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,15 +90,17 @@ struct Observation {
     observed_ms: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Phase {
-    Idle,
-    Active { start: u64 },
+/// Apparition bookkeeping for the current director event.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Event {
+    /// Time of the latest positive SKULL snapshot.
+    last_positive: Option<u64>,
+    /// Start of the consumed apparition; set once per director event.
+    start: Option<u64>,
 }
 
 struct Step {
-    phase: Phase,
-    cooldown_until: Option<u64>,
+    event: Event,
     opacity: u8,
 }
 
@@ -73,20 +109,20 @@ pub(crate) struct SkullLayer {
     scratch: Vec<u8>,
     observation: Option<Observation>,
     last_observed_ms: Option<u64>,
-    phase: Phase,
-    cooldown_until: Option<u64>,
-    cancel_pending: bool,
+    event: Event,
+    /// Report the head as unavailable to the director on the next frame.
+    unavailable_once: bool,
     opacity: u8,
 }
 
-/// Skull opacity for `elapsed` ms into an event at the given shared strength.
+/// Skull opacity for `elapsed` ms into an apparition at the given strength.
 pub(crate) fn opacity_at(elapsed: u64, strength: u16) -> u8 {
     let ramp = if elapsed < FADE_MS {
         elapsed
     } else if elapsed < FADE_MS + HOLD_MS {
         FADE_MS
     } else {
-        // Fade out; zero once the event has ended.
+        // Fade out; zero once the apparition has ended.
         EVENT_MS.saturating_sub(elapsed)
     };
     let strength = u64::from(strength).min(u64::from(HAUNT_FULL_STRENGTH));
@@ -101,9 +137,8 @@ impl SkullLayer {
             scratch: Vec::new(),
             observation: None,
             last_observed_ms: None,
-            phase: Phase::Idle,
-            cooldown_until: None,
-            cancel_pending: false,
+            event: Event::default(),
+            unavailable_once: false,
             opacity: 0,
         }
     }
@@ -114,7 +149,8 @@ impl SkullLayer {
 
     /// Enables or disables the layer. The scratch frame (`pixels * 4` bytes)
     /// is allocated here, once. Allocation failure changes nothing. Identical
-    /// settings keep all state; a real change clears observations and events.
+    /// settings keep all state; a real change clears observations and the
+    /// apparition and makes the director see no head on the next frame.
     pub fn configure(&mut self, enabled: bool, pixels: usize) -> Result<(), String> {
         if enabled == self.enabled {
             return Ok(());
@@ -132,16 +168,17 @@ impl SkullLayer {
         }
         self.enabled = enabled;
         self.reset();
+        self.unavailable_once = true;
         Ok(())
     }
 
-    /// Clears observations, cooldown, event phase and opacity; keeps settings.
+    /// Clears observations, the apparition and opacity; keeps settings. Used
+    /// with a director reset, so no pending cancellation remains.
     pub fn reset(&mut self) {
         self.observation = None;
         self.last_observed_ms = None;
-        self.phase = Phase::Idle;
-        self.cooldown_until = None;
-        self.cancel_pending = false;
+        self.event = Event::default();
+        self.unavailable_once = false;
         self.opacity = 0;
     }
 
@@ -190,17 +227,18 @@ impl SkullLayer {
         Ok(())
     }
 
-    /// Forgets the observation and cancels any event at once.
+    /// Forgets the observation and hides the skull at once. The next frame
+    /// reports no head to the director, which cancels any active event.
     pub fn clear_head(&mut self) {
         self.observation = None;
-        if matches!(self.phase, Phase::Active { .. }) {
-            self.phase = Phase::Idle;
-            self.cancel_pending = true;
-        }
+        self.unavailable_once = true;
         self.opacity = 0;
     }
 
     fn placement(&self, now: u64) -> Option<Observation> {
+        if !self.enabled {
+            return None;
+        }
         let seen = self.observation?;
         if seen.confidence < MIN_CONFIDENCE || seen.observed_ms > now {
             return None;
@@ -208,38 +246,41 @@ impl SkullLayer {
         (now - seen.observed_ms <= MAX_AGE_MS).then_some(seen)
     }
 
-    fn step(&self, now: u64, strength: u16, reduced: bool) -> Step {
-        let mut cooldown_until = self.cooldown_until;
-        if self.cancel_pending {
-            cooldown_until = Some(now + COOLDOWN_MS);
-        }
-        let eligible = !reduced && strength >= MIN_STRENGTH && self.placement(now).is_some();
-        let mut phase = self.phase;
-        if let Phase::Active { start } = phase {
-            if now.saturating_sub(start) >= EVENT_MS {
-                phase = Phase::Idle;
-                cooldown_until = Some(start + EVENT_MS + COOLDOWN_MS);
-            } else if !eligible {
-                phase = Phase::Idle;
-                cooldown_until = Some(now + COOLDOWN_MS);
-            }
-        }
-        if phase == Phase::Idle && eligible && cooldown_until.is_none_or(|due| now >= due) {
-            phase = Phase::Active { start: now };
-        }
-        let opacity = match phase {
-            Phase::Active { start } => opacity_at(now.saturating_sub(start), strength),
-            Phase::Idle => 0,
-        };
-        Step {
-            phase,
-            cooldown_until,
-            opacity,
-        }
+    /// Whether the director may select SKULL at `now`. Uses the same
+    /// validated placement the renderer uses.
+    pub fn head_available(&self, now: u64) -> bool {
+        !self.unavailable_once && self.placement(now).is_some()
     }
 
-    /// Advances the event for one valid automatic frame and, when visible,
-    /// draws the skull over `out` (the final mirrored RGBA). State is
+    fn step(&self, now: u64, snapshot: DirectorSnapshot, reduced: bool) -> Step {
+        let mut event = self.event;
+        let selected = snapshot.layers & SKULL != 0 && snapshot.strength > 0;
+        let usable = !reduced && self.head_available(now);
+        if !selected {
+            // A neutral or SKULL-free snapshot changes no event identity.
+            return Step { event, opacity: 0 };
+        }
+        if event
+            .last_positive
+            .is_none_or(|last| now.saturating_sub(last) >= NEW_EVENT_GAP_MS)
+        {
+            event.start = None;
+        }
+        event.last_positive = Some(now);
+        if usable && event.start.is_none() {
+            event.start = Some(now);
+        }
+        let opacity = match event.start {
+            Some(start) if usable && now.saturating_sub(start) < EVENT_MS => {
+                opacity_at(now.saturating_sub(start), snapshot.strength)
+            }
+            _ => 0,
+        };
+        Step { event, opacity }
+    }
+
+    /// Advances the apparition for one valid automatic frame and, when
+    /// visible, draws the skull over `out` (the final mirrored RGBA). State is
     /// committed only after drawing succeeds.
     pub fn apply(
         &mut self,
@@ -247,13 +288,10 @@ impl SkullLayer {
         width: usize,
         height: usize,
         now: u64,
-        strength: u16,
+        snapshot: DirectorSnapshot,
         reduced: bool,
     ) -> Result<(), String> {
-        if !self.enabled {
-            return Ok(());
-        }
-        let step = self.step(now, strength, reduced);
+        let step = self.step(now, snapshot, reduced);
         if step.opacity > 0 {
             let seen = self
                 .placement(now)
@@ -277,9 +315,8 @@ impl SkullLayer {
             render_skull_rgba(&self.scratch, out, width, height, options)
                 .map_err(|e| e.to_string())?;
         }
-        self.phase = step.phase;
-        self.cooldown_until = step.cooldown_until;
-        self.cancel_pending = false;
+        self.event = step.event;
+        self.unavailable_once = false;
         self.opacity = step.opacity;
         Ok(())
     }
@@ -295,6 +332,7 @@ mod tests {
     fn layer() -> SkullLayer {
         let mut layer = SkullLayer::new();
         layer.configure(true, W * H).unwrap();
+        layer.unavailable_once = false;
         layer
     }
 
@@ -302,11 +340,20 @@ mod tests {
         vec![40; W * H * 4]
     }
 
-    /// Observe at `now` (age 0) then process; returns the reported opacity.
-    fn tick(layer: &mut SkullLayer, now: u64, strength: u16) -> u8 {
+    fn selected(strength: u16) -> DirectorSnapshot {
+        DirectorSnapshot {
+            layers: SKULL,
+            strength,
+            delay_ms: 0,
+            trail_strength: 0,
+        }
+    }
+
+    /// Observe at `now` (age 0) then process a snapshot; returns the opacity.
+    fn tick(layer: &mut SkullLayer, now: u64, snapshot: DirectorSnapshot) -> u8 {
         layer.observe(W, H, 1, 1, 4, 5, 1000, now).unwrap();
         layer
-            .apply(&mut frame(), W, H, now, strength, false)
+            .apply(&mut frame(), W, H, now, snapshot, false)
             .unwrap();
         layer.opacity()
     }
@@ -345,77 +392,126 @@ mod tests {
     }
 
     #[test]
-    fn timeline_cooldown_and_second_event() {
+    fn apparition_starts_at_the_first_positive_snapshot_and_lasts_3200_ms() {
         let mut l = layer();
-        assert_eq!(tick(&mut l, 1000, 6000), 0);
-        assert_eq!(tick(&mut l, 1600, 6000), 48);
-        assert_eq!(tick(&mut l, 2200, 6000), 96);
-        assert_eq!(tick(&mut l, 2999, 6000), 96);
-        assert_eq!(tick(&mut l, 3200, 6000), 80);
-        assert_eq!(tick(&mut l, 3800, 6000), 32);
-        // Event ends at 1000 + 3200; cooldown runs until 12200.
-        assert_eq!(tick(&mut l, 4200, 6000), 0);
-        assert_eq!(tick(&mut l, 12199, 6000), 0);
-        assert_eq!(tick(&mut l, 12200, 6000), 0);
-        assert_eq!(tick(&mut l, 12800, 6000), 48);
-    }
-
-    #[test]
-    fn reduced_motion_and_low_strength_never_start_an_event() {
-        let mut l = layer();
-        for now in (0..4000).step_by(100) {
-            l.observe(W, H, 1, 1, 4, 5, 1000, now).unwrap();
-            l.apply(&mut frame(), W, H, now, 6000, true).unwrap();
-            assert_eq!((l.opacity(), l.phase), (0, Phase::Idle));
-            l.apply(&mut frame(), W, H, now, 1499, false).unwrap();
-            assert_eq!((l.opacity(), l.phase), (0, Phase::Idle));
+        // Neutral frames (including the director's selection frame) draw nothing.
+        assert_eq!(tick(&mut l, 500, DirectorSnapshot::default()), 0);
+        assert_eq!(l.event, Event::default());
+        for (offset, expected) in [
+            (0, 0),
+            (1, 0),
+            (600, 48),
+            (1199, 96),
+            (1200, 96),
+            (1999, 96),
+            (2000, 96),
+            (2600, 48),
+            (3199, 0),
+            (3200, 0),
+            (3201, 0),
+            (7999, 0),
+        ] {
+            assert_eq!(
+                tick(&mut l, 1000 + offset, selected(6000)),
+                expected,
+                "{offset}"
+            );
+            assert_eq!(l.event.start, Some(1000));
         }
-        assert!(l.cooldown_until.is_none());
-        l.apply(&mut frame(), W, H, 4000, 1500, false).unwrap();
-        assert_eq!(l.phase, Phase::Active { start: 4000 });
     }
 
     #[test]
-    fn huge_jump_starts_at_most_one_event_without_replay() {
+    fn repeated_timestamps_and_zero_strength_never_rearm() {
         let mut l = layer();
-        tick(&mut l, 0, 6000);
+        for _ in 0..3 {
+            assert_eq!(tick(&mut l, 1000, selected(6000)), 0);
+        }
+        assert_eq!(tick(&mut l, 1600, selected(6000)), 48);
+        assert_eq!(tick(&mut l, 1600, selected(6000)), 48);
+        // Strength rounding to zero is a neutral snapshot inside the event.
+        assert_eq!(tick(&mut l, 2000, DirectorSnapshot::default()), 0);
+        assert_eq!(tick(&mut l, 2400, selected(6000)), 96);
+        assert_eq!(l.event.start, Some(1000));
+        // After the window the latch holds for the rest of the event.
+        assert_eq!(tick(&mut l, 4300, DirectorSnapshot::default()), 0);
+        assert_eq!(tick(&mut l, 5000, selected(6000)), 0);
+        assert_eq!(tick(&mut l, 8999, selected(6000)), 0);
+        assert_eq!(l.event.start, Some(1000));
+    }
+
+    #[test]
+    fn a_new_director_event_needs_a_gap_of_8000_ms_between_positive_snapshots() {
+        let mut l = layer();
+        tick(&mut l, 1000, selected(6000));
+        tick(&mut l, 2000, selected(6000));
+        // 7999 ms after the last positive snapshot is still the same event.
+        assert_eq!(tick(&mut l, 9999, selected(6000)), 0);
+        assert_eq!(l.event.start, Some(1000));
+        // 8000 ms after it a different event is selected; elapsed starts at 0.
+        assert_eq!(tick(&mut l, 17_999, selected(6000)), 0);
+        assert_eq!(l.event.start, Some(17_999));
+        assert_eq!(tick(&mut l, 18_599, selected(6000)), 48);
+    }
+
+    #[test]
+    fn huge_jump_starts_at_most_one_apparition_without_replay() {
+        let mut l = layer();
+        tick(&mut l, 0, selected(6000));
         let far = 9_007_199_254_730_000;
-        assert_eq!(tick(&mut l, far, 6000), 0);
-        assert_eq!(l.phase, Phase::Active { start: far });
-        assert_eq!(tick(&mut l, far + 600, 6000), 48);
-        assert_eq!(tick(&mut l, far + 3200, 6000), 0);
-        assert_eq!(l.phase, Phase::Idle);
-        assert_eq!(l.cooldown_until, Some(far + 11_200));
+        assert_eq!(tick(&mut l, far, selected(6000)), 0);
+        assert_eq!(l.event.start, Some(far));
+        assert_eq!(tick(&mut l, far + 600, selected(6000)), 48);
+        assert_eq!(tick(&mut l, far + 3200, selected(6000)), 0);
+        assert_eq!(tick(&mut l, far + 5000, selected(6000)), 0);
+        assert_eq!(l.event.start, Some(far));
     }
 
     #[test]
-    fn cancellation_starts_cooldown_at_the_frame_time() {
+    fn no_placement_reduced_motion_or_a_disabled_layer_draw_nothing() {
         let mut l = layer();
-        tick(&mut l, 0, 6000);
-        assert_eq!(tick(&mut l, 1200, 6000), 96);
-        // Low strength cancels now.
-        assert_eq!(tick(&mut l, 1300, 1499), 0);
-        assert_eq!(l.cooldown_until, Some(9300));
-        assert_eq!(tick(&mut l, 9299, 6000), 0);
-        assert_eq!(l.phase, Phase::Idle);
-        assert_eq!(tick(&mut l, 9300, 6000), 0);
-        assert_eq!(l.phase, Phase::Active { start: 9300 });
+        tick(&mut l, 0, selected(6000));
+        assert_eq!(tick(&mut l, 1200, selected(6000)), 96);
+        // Reduced motion hides at once; the consumed latch stays.
+        l.apply(&mut frame(), W, H, 1300, selected(6000), true)
+            .unwrap();
+        assert_eq!(l.opacity(), 0);
+        assert_eq!(tick(&mut l, 1400, selected(6000)), 96);
+        // Age 501 hides, 500 shows.
+        l.observe(W, H, 1, 1, 4, 5, 1000, 2000).unwrap();
+        l.apply(&mut frame(), W, H, 2500, selected(6000), false)
+            .unwrap();
+        // Elapsed 2500 is 700 ms into the fade out: 96 * 700 / 1200 = 56.
+        assert_eq!(l.opacity(), 56);
+        l.apply(&mut frame(), W, H, 2501, selected(6000), false)
+            .unwrap();
+        assert_eq!(l.opacity(), 0);
+        // Recovery of the head inside the same event cannot restart it.
+        assert_eq!(tick(&mut l, 3300, selected(6000)), 0);
+        assert_eq!(l.event.start, Some(0));
+        let mut off = layer();
+        off.configure(false, W * H).unwrap();
+        assert!(!off.head_available(0));
     }
 
     #[test]
-    fn clear_head_cancels_and_cools_down_from_the_next_frame() {
+    fn clear_head_and_toggles_hide_at_once_and_report_no_head_once() {
         let mut l = layer();
-        tick(&mut l, 0, 6000);
-        tick(&mut l, 1200, 6000);
+        tick(&mut l, 0, selected(6000));
+        tick(&mut l, 1200, selected(6000));
         l.clear_head();
         assert_eq!(l.opacity(), 0);
-        assert_eq!(l.phase, Phase::Idle);
-        assert_eq!(tick(&mut l, 1500, 6000), 0);
-        assert_eq!(l.cooldown_until, Some(9500));
-        assert_eq!(tick(&mut l, 9499, 6000), 0);
-        assert_eq!(l.phase, Phase::Idle);
-        tick(&mut l, 9500, 6000);
-        assert_eq!(l.phase, Phase::Active { start: 9500 });
+        // A head observed again before the next frame is still reported
+        // missing once, so the director cancels the consumed event.
+        l.observe(W, H, 1, 1, 4, 5, 1000, 1300).unwrap();
+        assert!(!l.head_available(1300));
+        l.apply(&mut frame(), W, H, 1300, DirectorSnapshot::default(), false)
+            .unwrap();
+        assert!(l.head_available(1300));
+        l.configure(false, W * H).unwrap();
+        assert!(!l.head_available(1300) && l.observation.is_none());
+        l.configure(true, W * H).unwrap();
+        assert!(!l.head_available(1300));
+        assert_eq!(l.event, Event::default());
     }
 
     #[test]
@@ -428,6 +524,7 @@ mod tests {
         assert!(l.placement(100).is_some());
         assert!(l.placement(600).is_some());
         assert!(l.placement(601).is_none());
+        assert!(l.head_available(600) && !l.head_available(601));
     }
 
     #[test]
@@ -457,12 +554,12 @@ mod tests {
     #[test]
     fn reset_and_disable_clear_everything_but_keep_the_scratch() {
         let mut l = layer();
-        tick(&mut l, 0, 6000);
-        tick(&mut l, 1200, 6000);
+        tick(&mut l, 0, selected(6000));
+        tick(&mut l, 1200, selected(6000));
         l.reset();
         assert_eq!(l.opacity(), 0);
-        assert!(l.observation.is_none() && l.cooldown_until.is_none());
-        assert!(l.last_observed_ms.is_none());
+        assert!(l.observation.is_none() && l.event == Event::default());
+        assert!(l.last_observed_ms.is_none() && !l.unavailable_once);
         l.observe(W, H, 0, 0, 1, 1, 1000, 0).unwrap();
         l.configure(true, W * H).unwrap();
         assert!(l.observation.is_some(), "identical settings keep state");
@@ -477,12 +574,12 @@ mod tests {
         let (pointer, capacity) = (l.scratch.as_ptr(), l.scratch.capacity());
         assert_eq!(capacity, W * H * 4);
         for now in (0..4000).step_by(100) {
-            tick(&mut l, now, 6000);
+            tick(&mut l, now, selected(6000));
         }
         l.configure(false, W * H).unwrap();
         l.configure(true, W * H).unwrap();
         for now in (0..4000).step_by(100) {
-            tick(&mut l, now, 6000);
+            tick(&mut l, now, selected(6000));
         }
         assert_eq!(l.scratch.as_ptr(), pointer);
         assert_eq!(l.scratch.capacity(), capacity);
@@ -507,13 +604,15 @@ mod tests {
     #[test]
     fn render_failure_commits_no_state() {
         let mut l = layer();
-        tick(&mut l, 0, 6000);
-        let phase = l.phase;
+        tick(&mut l, 0, selected(6000));
+        let event = l.event;
         l.observe(W, H, 0, 0, 2, 2, 1000, 1200).unwrap();
         // Wrong output length is rejected before drawing or committing.
         let mut short = vec![0; 4];
-        assert!(l.apply(&mut short, W, H, 1200, 6000, false).is_err());
-        assert_eq!(l.phase, phase);
+        assert!(l
+            .apply(&mut short, W, H, 1200, selected(6000), false)
+            .is_err());
+        assert_eq!(l.event, event);
         assert_eq!(l.opacity(), 0);
     }
 }
