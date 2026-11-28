@@ -360,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn reduced_motion_idle_stays_natural_without_shuffling_or_allocating() {
+    fn reduced_motion_idle_stays_natural_and_reuses_the_output_buffer() {
         let mut d = IdleDisplay::new(160, 120, 3, true).unwrap();
         let expected = d.pixels.clone();
         let pointer = d.pixels.as_ptr();
