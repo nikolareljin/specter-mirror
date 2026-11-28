@@ -21,8 +21,12 @@ follows the shared progression. Skull events require fresh head bounds;
 reduced motion suppresses temporal effects and skulls. Turn automatic haunting
 off to use the manual controls.
 The native X11 application animates a generated diagnostic sample through
-the same delay/trail engine, with a 160 x 120 fallback. Native camera capture
-and interaction detection remain separate work. Artwork is illustrative.
+the same delay/trail engine, with a 160 x 120 fallback. Opt-in
+`--camera /dev/videoN` feeds V4L2 RGB24 or YUYV frames through that pipeline
+and falls back once to the sample if the camera is missing, unsupported,
+disconnected or stalled. It is unverified on physical hardware, so treat it as
+a development path. Native haunting effects and interaction detection remain
+separate work. Artwork is illustrative.
 
 ```bash
 ./dev --help
@@ -39,7 +43,9 @@ npm run build
 ```
 
 Ubuntu native builds need `build-essential`, `pkg-config` and `libx11-dev`.
-Full i686 checks also need `gcc-multilib` and `libc6-dev-i386`.
+The V4L2 bindings are generated at build time, so they also need libclang and
+the kernel headers (`linux-libc-dev`). Full i686 checks also need
+`gcc-multilib` and `libc6-dev-i386`.
 The X11 proof needs a display; use `xvfb-run -a ./dev native-proof` in CI.
 
 ## Try locally

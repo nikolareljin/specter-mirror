@@ -1,3 +1,4 @@
+use crate::frame::pack_mirrored;
 use spook_core::{TemporalError, TemporalHistory, TemporalOptions};
 
 /// Generated diagnostic input and reusable native temporal output.
@@ -55,15 +56,31 @@ impl Sample {
         };
         self.history
             .process(&self.source, &mut self.processed, now_ms, options)?;
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let source = (y * self.width + self.width - 1 - x) * 4;
-                let rgba = &self.processed[source..source + 4];
-                self.pixels[y * self.width + x] =
-                    (u32::from(rgba[0]) << 16) | (u32::from(rgba[1]) << 8) | u32::from(rgba[2]);
-            }
-        }
+        pack_mirrored(&self.processed, &mut self.pixels, self.width, self.height);
         Ok(())
+    }
+
+    /// Runs unmirrored opaque RGBA from another source through the same shared
+    /// history, output and mirroring buffers. The caller chooses the options;
+    /// invalid input leaves history and displayed pixels unchanged.
+    pub fn process_external(
+        &mut self,
+        rgba: &[u8],
+        now_ms: u64,
+        options: TemporalOptions,
+    ) -> Result<(), TemporalError> {
+        self.history
+            .process(rgba, &mut self.processed, now_ms, options)?;
+        pack_mirrored(&self.processed, &mut self.pixels, self.width, self.height);
+        Ok(())
+    }
+
+    /// Forgets all temporal history and blanks the displayed pixels, so
+    /// frames from a previous source cannot appear in the next one.
+    pub fn reset(&mut self) {
+        self.history.reset();
+        self.processed.fill(0);
+        self.pixels.fill(0);
     }
 
     pub fn pixels(&self) -> &[u32] {

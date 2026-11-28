@@ -24,7 +24,7 @@ jobs:
       cache: false
       install_command: |
         sudo apt-get update
-        sudo apt-get install -y gcc-multilib libc6-dev-i386 libx11-dev xvfb
+        sudo apt-get install -y gcc-multilib libc6-dev-i386 libclang-dev linux-libc-dev libx11-dev xvfb
         rustup target add --toolchain 1.99.1 i686-unknown-linux-gnu wasm32-unknown-unknown
       lint_command: ./dev fmt-check
       test_command: ./check
