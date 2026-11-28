@@ -1263,7 +1263,21 @@ mod tests {
             assert_eq!(pipeline.camera_frames, before);
             let text = rec.report(ExitReason::Timed, 100_000, 100_100);
             assert!(text.contains("\"frames\":1,"), "{text}");
-            assert!(text.contains("\"idle_ticks\":10,") || text.contains("\"idle_ticks\":"));
+            let camera = text.split("\"camera\":").nth(1).unwrap();
+            let count = |key: &str| -> u64 {
+                camera
+                    .split(key)
+                    .nth(1)
+                    .unwrap()
+                    .split(',')
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap()
+            };
+            let submissions = count("\"submissions\":");
+            assert!(submissions >= 11);
+            assert_eq!(count("\"idle_ticks\":"), submissions - 1);
             assert!(text.contains("\"processing_us\":{\"count\":1,"), "{text}");
         }
 
