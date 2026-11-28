@@ -21,7 +21,8 @@ No external fonts, official third-party logos or audio are used.
 
 Museum JPEGs were downloaded unchanged from the Met's Open Access API on
 2026-11-28. [sources.json](artwork/sources.json) pins each file's checksum,
-object URL, download URL, date and artist. The runtime converts them to green
-and scales with contain, without changing the source files. The Met permits
+object URL, download URL, date and artist. The runtime preserves original
+colors, caches green variants for recovery and scales with contain, without
+changing the source files. The Met permits
 reuse and remixing of its Open Access images under CC0:
 https://www.metmuseum.org/hubs/open-access.

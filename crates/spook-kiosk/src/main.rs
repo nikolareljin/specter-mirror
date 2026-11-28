@@ -34,7 +34,7 @@ CPU-only X11. Escape exits.\n\
                   sample. RGB24 or YUYV only; falls back to the sample.\n\
   --self-test     Render one frame, then exit (sample only).\n\
   --metrics       Print one JSON measurement report to stdout at exit.\n\
-  --idle-artwork  Green offline slideshow; an explicit --camera enables\n\
+  --idle-artwork  Original-color offline slideshow; explicit --camera enables\n\
                   face-triggered haunting after more than 2 seconds.\n\
   --run-for-ms N  Exit normally after N ms, 100..600000.\n\
   --delay-ms N    Reflection delay, 0..600 ms (default 250).\n\

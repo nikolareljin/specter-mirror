@@ -29,9 +29,11 @@ a development path. Default native capture uses manual delay/trails; automatic
 face-triggered haunting is opt-in. Branding illustrations are illustrative.
 
 The opt-in native [idle artwork mode](docs/IDLE_ARTWORK.md) displays three bundled
-public-domain works in green. With an explicit camera, sustained face detection
+public-domain works in their original colors, shuffled after roughly 2 minutes.
+With an explicit camera, sustained face detection
 for more than 2 seconds reveals the haunted live mirror; 3 seconds without a
-face returns to artwork. Native face detection and haunting remain unverified
+face returns to a green photo that slowly recovers its original colors.
+Native face detection and haunting remain unverified
 on the target laptops.
 
 ```bash

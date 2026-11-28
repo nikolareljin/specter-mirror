@@ -1,6 +1,19 @@
-use crate::artwork::{mix, Artwork};
+use crate::artwork::{fade_weight, mix, Artwork};
 use crate::haunting::Haunting;
 use crate::presence::{Face, Presence};
+
+const REVEAL_MS: u64 = 1000;
+const RETURN_MS: u64 = 1000;
+const RESTORE_MS: u64 = 6000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Phase {
+    Idle,
+    Reveal(u64),
+    Live,
+    Return(u64),
+    Restore(u64),
+}
 
 pub struct IdleDisplay {
     artwork: Artwork,
@@ -9,12 +22,12 @@ pub struct IdleDisplay {
     input: Vec<u8>,
     live_pixels: Vec<u32>,
     pixels: Vec<u32>,
-    changed: u64,
-    from_weight: u32,
-    weight: u32,
+    transition_from: Vec<u32>,
+    phase: Phase,
     reduced: bool,
     has_frame: bool,
     available: bool,
+    last_now: Option<u64>,
 }
 
 impl IdleDisplay {
@@ -24,19 +37,21 @@ impl IdleDisplay {
         seed: u32,
         reduced: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let artwork = Artwork::new(width, height, seed)?;
+        let pixels = artwork.natural().to_vec();
         Ok(Self {
-            artwork: Artwork::new(width, height)?,
+            artwork,
             haunting: Haunting::new(width, height, seed)?,
             presence: Presence::default(),
             input: vec![0; width * height * 4],
             live_pixels: vec![0; width * height],
-            pixels: vec![0; width * height],
-            changed: 0,
-            from_weight: 0,
-            weight: 0,
+            transition_from: vec![0; width * height],
+            pixels,
+            phase: Phase::Idle,
             reduced,
             has_frame: false,
             available: false,
+            last_now: None,
         })
     }
     pub fn live(&self) -> bool {
@@ -45,6 +60,7 @@ impl IdleDisplay {
     pub fn pixels(&self) -> &[u32] {
         &self.pixels
     }
+
     pub fn update(
         &mut self,
         now: u64,
@@ -53,55 +69,111 @@ impl IdleDisplay {
         available: bool,
         face: Option<(u64, Face)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(frame) = frame {
-            if frame.len() != self.input.len() {
-                return Err("invalid idle camera frame".into());
-            }
+        if self.last_now.is_some_and(|last| now < last) {
+            return Err("display time regressed".into());
+        }
+        if frame.is_some_and(|p| p.len() != self.input.len()) {
+            return Err("invalid idle camera frame".into());
         }
         let was_live = self.live();
-        if !available {
-            if self.available || self.has_frame {
-                self.presence.reset();
-                self.haunting.reset();
-                self.input.fill(0);
-                self.has_frame = false;
-                self.weight = 0;
-                self.from_weight = 0;
-                self.live_pixels.fill(0);
-            }
-        } else {
+        if available {
+            self.presence.tick(
+                now,
+                observation.filter(|_| self.has_frame || frame.is_some()),
+            )?;
             if let Some(frame) = frame {
                 self.input.copy_from_slice(frame);
                 self.has_frame = true;
             }
-            self.presence
-                .tick(now, observation.filter(|_| self.has_frame))?;
+        } else if self.available || self.has_frame {
+            self.presence.reset();
+            self.haunting.reset();
+            self.input.fill(0);
+            self.live_pixels.fill(0);
+            self.transition_from.fill(0);
+            self.has_frame = false;
+            self.phase = Phase::Idle;
+            self.artwork.settle();
+        }
+        let delta = self.last_now.map_or(0, |last| now - last);
+        if self.live() != was_live && available {
+            self.transition_from.copy_from_slice(&self.pixels);
+            self.haunting.reset();
+            if self.live() {
+                self.artwork.settle();
+                self.phase = if self.reduced {
+                    Phase::Live
+                } else {
+                    Phase::Reveal(now)
+                };
+            } else if self.reduced {
+                self.phase = Phase::Idle;
+                self.artwork.restart_hold();
+            } else {
+                self.phase = Phase::Return(now);
+            }
+        } else if self.phase == Phase::Idle && (!self.available || available) {
+            self.artwork.advance(delta, self.reduced);
         }
         self.available = available;
-        if self.live() != was_live {
-            self.changed = now;
-            self.from_weight = self.weight;
-            self.haunting.reset();
-        }
         if self.live() && self.has_frame {
             self.haunting
                 .process(&self.input, now, face, self.reduced, &mut self.live_pixels)?;
         }
-        let target = if self.live() { 255 } else { 0 };
-        self.weight = if self.reduced {
-            target
-        } else {
-            let progress = (now.saturating_sub(self.changed).min(1000) * 255 / 1000) as u32;
-            (self.from_weight * (255 - progress) + target * progress + 127) / 255
-        };
-        self.artwork.render(now, self.reduced, &mut self.pixels);
-        for (dst, live) in self.pixels.iter_mut().zip(&self.live_pixels) {
-            *dst = mix(*dst, *live, self.weight);
+        match self.phase {
+            Phase::Idle => self.artwork.render(&mut self.pixels),
+            Phase::Reveal(start) => {
+                let elapsed = now - start;
+                blend(
+                    &self.transition_from,
+                    &self.live_pixels,
+                    fade_weight(elapsed, REVEAL_MS as u16),
+                    &mut self.pixels,
+                );
+                if elapsed >= REVEAL_MS {
+                    self.phase = Phase::Live;
+                }
+            }
+            Phase::Live => self.pixels.copy_from_slice(&self.live_pixels),
+            Phase::Return(start) => {
+                let elapsed = now - start;
+                if elapsed < RETURN_MS {
+                    blend(
+                        &self.transition_from,
+                        self.artwork.tinted(),
+                        fade_weight(elapsed, RETURN_MS as u16),
+                        &mut self.pixels,
+                    );
+                } else {
+                    self.phase = Phase::Restore(start.saturating_add(RETURN_MS));
+                    self.restore(elapsed - RETURN_MS);
+                }
+            }
+            Phase::Restore(start) => self.restore(now - start),
         }
-        if !self.live() && self.weight == 0 {
-            self.live_pixels.fill(0);
-        }
+        self.last_now = Some(now);
         Ok(())
+    }
+
+    fn restore(&mut self, elapsed: u64) {
+        blend(
+            self.artwork.tinted(),
+            self.artwork.natural(),
+            fade_weight(elapsed, RESTORE_MS as u16),
+            &mut self.pixels,
+        );
+        if elapsed >= RESTORE_MS {
+            self.phase = Phase::Idle;
+            self.artwork.restart_hold();
+            self.live_pixels.fill(0);
+            self.transition_from.fill(0);
+        }
+    }
+}
+
+fn blend(from: &[u32], to: &[u32], weight: u32, out: &mut [u32]) {
+    for ((dst, a), b) in out.iter_mut().zip(from).zip(to) {
+        *dst = mix(*a, *b, weight);
     }
 }
 
@@ -117,75 +189,162 @@ mod tests {
             confidence: 900,
         }
     }
-    #[test]
-    fn real_camera_only_activation_returns_to_art_and_forgets_previous_visit() {
-        for (w, h) in [(160, 120), (320, 240)] {
-            let mut display = IdleDisplay::new(w, h, 7, false).unwrap();
-            let rgba = [250, 10, 20, 255].repeat(w * h);
-            display.update(0, None, None, false, None).unwrap();
-            let art = display.pixels.clone();
-            for at in (100..=2100).step_by(200) {
-                display
-                    .update(
-                        at,
-                        Some(&rgba),
-                        Some((at, Some(face()))),
-                        true,
-                        Some((at, face())),
-                    )
-                    .unwrap();
-                assert!(!display.live());
-            }
-            display
-                .update(
-                    2101,
-                    Some(&rgba),
-                    Some((2101, Some(face()))),
-                    true,
-                    Some((2101, face())),
-                )
-                .unwrap();
-            assert!(display.live());
-            display.update(3101, None, None, true, None).unwrap();
-            assert_eq!(display.weight, 255);
-            assert_eq!(
-                display.pixels[0], 0xfa0a14,
-                "neutral live opening must use camera pixels"
-            );
-            display.update(5101, None, None, true, None).unwrap();
-            assert!(!display.live());
-            display.update(6101, None, None, true, None).unwrap();
-            assert_eq!(display.pixels, art);
-            display.update(6200, None, None, false, None).unwrap();
-            assert!(display.input.iter().all(|v| *v == 0));
-            assert_eq!(display.pixels, art);
-        }
-    }
-    #[test]
-    fn art_and_stale_results_cannot_start_a_session_and_buffers_are_reused() {
-        let mut d = IdleDisplay::new(160, 120, 1, true).unwrap();
-        let ptr = d.pixels.as_ptr();
-        d.update(0, None, None, false, None).unwrap();
-        let expected = d.pixels.clone();
-        for now in (100..10000).step_by(100) {
-            d.update(now, None, None, false, None).unwrap();
-            assert!(!d.live());
-            assert_eq!(d.pixels, expected);
-        }
-        assert_eq!(ptr, d.pixels.as_ptr());
-        let rgba = [10, 20, 30, 255].repeat(160 * 120);
-        d.update(10000, Some(&rgba), Some((0, Some(face()))), true, None)
-            .unwrap();
-        assert!(!d.live());
-        assert_eq!(d.pixels, expected);
-    }
 
     #[test]
-    fn observations_without_live_input_cannot_activate_the_display() {
-        let mut d = IdleDisplay::new(160, 120, 1, false).unwrap();
-        for at in (0..10000).step_by(200) {
-            d.update(at, None, Some((at, Some(face()))), true, Some((at, face())))
+    fn a_long_live_visit_keeps_the_same_photo_reserved_for_recovery() {
+        let mut d = IdleDisplay::new(160, 120, 5, false).unwrap();
+        let frame = [50, 100, 150, 255].repeat(160 * 120);
+        let held = d.artwork.natural().as_ptr();
+        enter(&mut d, &frame);
+        d.update(3001, None, None, true, None).unwrap();
+        d.update(
+            200000,
+            Some(&frame),
+            Some((200000, Some(face()))),
+            true,
+            Some((200000, face())),
+        )
+        .unwrap();
+        assert!(d.live());
+        assert_eq!(
+            d.artwork.natural().as_ptr(),
+            held,
+            "hidden slideshow advanced during the visit"
+        );
+    }
+    fn enter(d: &mut IdleDisplay, frame: &[u8]) {
+        for at in [0, 400, 800, 1200, 1600, 2000] {
+            d.update(
+                at,
+                Some(frame),
+                Some((at, Some(face()))),
+                true,
+                Some((at, face())),
+            )
+            .unwrap();
+            assert!(!d.live());
+        }
+        d.update(
+            2001,
+            Some(frame),
+            Some((2001, Some(face()))),
+            true,
+            Some((2001, face())),
+        )
+        .unwrap();
+        assert!(d.live());
+    }
+    #[test]
+    fn natural_photo_full_color_video_green_photo_then_slow_natural_recovery() {
+        for (w, h) in [(160, 120), (320, 240)] {
+            let mut d = IdleDisplay::new(w, h, 7, false).unwrap();
+            let frame = [250, 10, 20, 255].repeat(w * h);
+            let natural = d.pixels.clone();
+            let tinted = d.artwork.tinted().to_vec();
+            let current = d.artwork.natural().as_ptr();
+            enter(&mut d, &frame);
+            assert_eq!(
+                d.pixels, natural,
+                "reveal must start at the displayed natural photo"
+            );
+            d.update(3001, None, None, true, None).unwrap();
+            assert_eq!(
+                d.pixels[0], 0xfa0a14,
+                "the webcam opening must be full color"
+            );
+            let live = d.pixels.clone();
+            d.update(5001, None, None, true, None).unwrap();
+            assert!(!d.live());
+            assert_eq!(d.pixels, live);
+            d.update(6001, None, None, true, None).unwrap();
+            assert_eq!(d.pixels, tinted, "return must reach the fully green photo");
+            d.update(9001, None, None, true, None).unwrap();
+            for i in 0..w * h {
+                assert_eq!(d.pixels[i], mix(tinted[i], natural[i], 128));
+            }
+            assert_eq!(d.artwork.natural().as_ptr(), current);
+            d.update(12001, None, None, true, None).unwrap();
+            assert_eq!(d.phase, Phase::Idle);
+            assert_eq!(d.pixels, natural);
+            d.update(132001, None, None, true, None).unwrap();
+            assert_eq!(
+                d.pixels, natural,
+                "the recovered image gets a new two-minute hold"
+            );
+            d.update(137001, None, None, true, None).unwrap();
+            assert_ne!(d.artwork.natural().as_ptr(), current);
+        }
+    }
+    #[test]
+    fn entry_during_recovery_continues_from_the_visible_frame_and_reduced_motion_is_immediate() {
+        for reduced in [false, true] {
+            let mut d = IdleDisplay::new(160, 120, 4, reduced).unwrap();
+            let frame = [50, 100, 150, 255].repeat(160 * 120);
+            let natural = d.pixels.clone();
+            enter(&mut d, &frame);
+            if reduced {
+                assert_eq!(d.pixels[0], 0x326496);
+            }
+            d.update(3001, None, None, true, None).unwrap();
+            d.update(5001, None, None, true, None).unwrap();
+            if reduced {
+                assert_eq!(d.pixels, natural);
+                assert_eq!(d.phase, Phase::Idle);
+            } else {
+                d.update(6001, None, None, true, None).unwrap();
+                assert_eq!(d.pixels, d.artwork.tinted());
+            }
+            for at in [6100, 6500, 6900, 7300, 7700, 8100] {
+                d.update(
+                    at,
+                    Some(&frame),
+                    Some((at, Some(face()))),
+                    true,
+                    Some((at, face())),
+                )
                 .unwrap();
+                assert!(!d.live());
+            }
+            let before = d.pixels.clone();
+            d.update(
+                8101,
+                Some(&frame),
+                Some((8101, Some(face()))),
+                true,
+                Some((8101, face())),
+            )
+            .unwrap();
+            assert!(d.live());
+            if !reduced {
+                assert_eq!(
+                    d.pixels, before,
+                    "re-entry may not jump to a different image"
+                );
+            }
+        }
+    }
+    #[test]
+    fn failure_stale_observations_invalid_time_and_buffers_are_safe() {
+        let mut d = IdleDisplay::new(160, 120, 2, false).unwrap();
+        let frame = [10, 20, 30, 255].repeat(160 * 120);
+        let pointer = d.pixels.as_ptr();
+        enter(&mut d, &frame);
+        d.update(3001, None, None, true, None).unwrap();
+        d.update(3002, None, None, false, None).unwrap();
+        assert_eq!(d.phase, Phase::Idle);
+        assert_eq!(d.pixels, d.artwork.natural());
+        assert!(d.input.iter().all(|b| *b == 0));
+        let shown = d.pixels.clone();
+        assert!(d.update(3001, None, None, true, None).is_err());
+        assert_eq!(d.pixels, shown);
+        assert!(d.update(3003, Some(&frame[..4]), None, true, None).is_err());
+        assert_eq!(d.pixels, shown);
+        d.update(10000, Some(&frame), Some((0, Some(face()))), true, None)
+            .unwrap();
+        assert!(!d.live());
+        assert_eq!(pointer, d.pixels.as_ptr());
+        for at in (10200..20000).step_by(200) {
+            d.update(at, None, None, true, None).unwrap();
             assert!(!d.live());
         }
     }
