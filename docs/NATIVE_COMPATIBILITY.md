@@ -1,5 +1,10 @@
 # Native dependency investigation
 
+The opt-in [idle artwork mode](IDLE_ARTWORK.md) adds offline museum images and
+a local face detector process before the shared haunting engine. Its actual
+target detector cost, accuracy and alignment remain unverified. The baseline
+sample/camera validation report does not measure that mode.
+
 | Component | Foundation choice | Remaining evidence |
 | --- | --- | --- |
 | Window | minifb 0.29.0, X11 only, MIT OR Apache-2.0 | i686 execution on antiX, old drivers and physical display |
