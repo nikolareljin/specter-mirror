@@ -150,13 +150,13 @@ cost and physical alignment on the actual webcam remain unmeasured.
 33. An explicit native artwork mode shall shuffle bundled, licensed images in
     their original colors after a 2-minute idle hold, with slow crossfades and
     no immediate repeats. Pause shuffling during a live visit and recovery.
-    Operate offline. With an explicitly selected camera, more than 2 seconds of fresh
-    face observations shall reveal a neutral live opening and the shared
+    Operate offline. With an explicitly selected camera, more than 2 seconds of
+    fresh face observations shall reveal a neutral live opening and the shared
     haunting progression/director. After 3 seconds without valid face presence,
     fade to the same held image in green, then ease that image back to its
     original colors before restarting the idle hold. Detection shall not imply
     identity or gaze. Only live frames reach the bounded local detector;
-    camera/detector failure returns to
-    artwork and releases workers. Preserve manual/default modes and reduced
+    camera/detector failure returns to artwork and releases workers.
+    Preserve manual/default modes and reduced
     motion. See [the native contract](../../../docs/IDLE_ARTWORK.md). Actual
     antiX, real-face and laptop acceptance remain open.

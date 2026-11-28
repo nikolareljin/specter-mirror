@@ -34,6 +34,8 @@ exceed its timeout. Escape and window close stop capture and the detector.
   6 seconds. Pause the shuffle throughout the live visit and recovery, then
   give the recovered photo a fresh 2-minute hold before the next shuffle.
   A returning visitor can interrupt recovery without jumping to another image.
+  If activation interrupts a photo crossfade, retain its dominant image for
+  recovery while revealing the webcam from the currently visible blend.
   A brief missed detection does not end a visit. A still face can keep haunting
   active without requiring movement. Detection is not identity or gaze tracking.
 - Camera loss or detector failure immediately shows artwork, clears the live

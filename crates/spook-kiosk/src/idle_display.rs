@@ -348,4 +348,26 @@ mod tests {
             assert!(!d.live());
         }
     }
+
+    #[test]
+    fn observations_without_live_input_cannot_activate_the_display() {
+        let mut d = IdleDisplay::new(160, 120, 1, false).unwrap();
+        for at in (0..10000).step_by(200) {
+            d.update(at, None, Some((at, Some(face()))), true, Some((at, face())))
+                .unwrap();
+            assert!(!d.live());
+        }
+    }
+
+    #[test]
+    fn reduced_motion_idle_stays_natural_without_shuffling_or_allocating() {
+        let mut d = IdleDisplay::new(160, 120, 3, true).unwrap();
+        let expected = d.pixels.clone();
+        let pointer = d.pixels.as_ptr();
+        for at in [0, 120000, 125000, 500000, u64::MAX] {
+            d.update(at, None, None, false, None).unwrap();
+            assert_eq!(d.pixels, expected);
+            assert_eq!(d.pixels.as_ptr(), pointer);
+        }
+    }
 }
