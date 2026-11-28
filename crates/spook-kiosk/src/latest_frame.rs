@@ -166,7 +166,9 @@ impl LatestFrame {
         self.lock().last.map(|meta| meta.dequeued_ms)
     }
 
-    #[cfg(test)]
+    /// Numeric snapshot of the exchange counters. `published` counts complete
+    /// frames accepted; `overwritten` counts unread frames replaced by a newer
+    /// one; `stale` counts unread frames discarded for age at consumption.
     pub fn counters(&self) -> Counters {
         self.lock().counters
     }

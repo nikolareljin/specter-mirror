@@ -8,9 +8,14 @@ use std::sync::Arc;
 mod camera;
 mod frame;
 mod latest_frame;
+mod metrics;
 mod presentation;
 mod sample;
 use camera::{CameraPoll, CameraSession, Clock, MonotonicClock};
+use latest_frame::Counters;
+use metrics::{
+    ExitReason, Iteration, MicroClock, MonotonicMicros, Recorder, RunConfig, SourceKind, Step,
+};
 use presentation::{FitMode, Presentation};
 use sample::Sample;
 
@@ -23,6 +28,8 @@ CPU-only X11. Escape exits.\n\
   --camera PATH   Use /dev/videoN (absolute path, decimal N) instead of the\n\
                   sample. RGB24 or YUYV only; falls back to the sample.\n\
   --self-test     Render one frame, then exit (sample only).\n\
+  --metrics       Print one JSON measurement report to stdout at exit.\n\
+  --run-for-ms N  Exit normally after N ms, 100..600000.\n\
   --delay-ms N    Reflection delay, 0..600 ms (default 250).\n\
   --trails N      Past-frame blend weight, 0..255 (default 115).\n\
   --resolution S Processing size: 320x240 (default) or 160x120.\n\
@@ -36,8 +43,10 @@ Examples:\n\
   spook-kiosk --reduced-motion\n\
   spook-kiosk --camera /dev/video0 --resolution 160x120\n\
   spook-kiosk --self-test --fit cover\n\
+  spook-kiosk --metrics --run-for-ms 30000\n\
 The appliance session requests fullscreen. Camera mode is opt-in, needs read/write\n\
-access to the device and has no hardware verification yet.";
+access to the device and has no hardware verification yet. --metrics and\n\
+--run-for-ms cannot be combined with --self-test.";
 
 #[derive(Debug, PartialEq, Eq)]
 struct Options {
@@ -49,6 +58,9 @@ struct Options {
     reduced_motion: bool,
     /// Index N of an explicit `/dev/videoN`; `None` selects the sample.
     camera: Option<u16>,
+    metrics: bool,
+    /// Timed normal exit after this many milliseconds (100..=600000).
+    run_for_ms: Option<u32>,
 }
 
 impl Default for Options {
@@ -64,6 +76,8 @@ impl Default for Options {
             low_resolution: false,
             reduced_motion: false,
             camera: None,
+            metrics: false,
+            run_for_ms: None,
         }
     }
 }
@@ -116,6 +130,10 @@ fn parse_options(
             Some("--camera") if options.camera.is_none() && !options.help => {
                 options.camera = Some(parse_camera(arguments.next())?);
             }
+            Some("--metrics") if !options.metrics && !options.help => options.metrics = true,
+            Some("--run-for-ms") if options.run_for_ms.is_none() && !options.help => {
+                options.run_for_ms = Some(parse_run_for(arguments.next())?);
+            }
             Some("--reduced-motion") if !options.reduced_motion => options.reduced_motion = true,
             Some("--help" | "-h")
                 if options == Options::default()
@@ -130,7 +148,9 @@ fn parse_options(
             _ => return Err(HELP),
         }
     }
-    if options.proof && options.camera.is_some() {
+    if options.proof
+        && (options.camera.is_some() || options.metrics || options.run_for_ms.is_some())
+    {
         return Err(HELP);
     }
     Ok(options)
@@ -151,6 +171,26 @@ fn parse_camera(value: Option<std::ffi::OsString>) -> Result<u16, &'static str> 
         return Err(HELP);
     }
     digits.parse::<u16>().map_err(|_| HELP)
+}
+
+/// Accepts a canonical decimal number of milliseconds in 100..=600000.
+fn parse_run_for(value: Option<std::ffi::OsString>) -> Result<u32, &'static str> {
+    let text = value
+        .as_deref()
+        .and_then(std::ffi::OsStr::to_str)
+        .ok_or(HELP)?;
+    let canonical = !text.is_empty()
+        && text.len() <= 6
+        && text.bytes().all(|byte| byte.is_ascii_digit())
+        && !text.starts_with('0');
+    if !canonical {
+        return Err(HELP);
+    }
+    let number = text.parse::<u32>().map_err(|_| HELP)?;
+    if !(100..=600_000).contains(&number) {
+        return Err(HELP);
+    }
+    Ok(number)
 }
 
 fn parse_number(value: Option<std::ffi::OsString>, max: u16) -> Result<u16, &'static str> {
@@ -196,6 +236,10 @@ struct Pipeline {
     source: Source,
     announced: bool,
     camera_frames: u64,
+    /// What the most recent `update` did; read by measurement only.
+    last_step: Step,
+    /// Latest numeric capture snapshot, kept after the session is released.
+    capture: Option<Counters>,
 }
 
 impl Pipeline {
@@ -211,6 +255,15 @@ impl Pipeline {
             retiring: None,
             announced: false,
             camera_frames: 0,
+            last_step: Step::Idle,
+            capture: None,
+        }
+    }
+
+    fn source_kind(&self) -> SourceKind {
+        match self.source {
+            Source::Sample => SourceKind::Sample,
+            Source::Camera => SourceKind::Camera,
         }
     }
 
@@ -227,8 +280,11 @@ impl Pipeline {
         options: TemporalOptions,
         reduced_motion: bool,
     ) -> Result<Option<String>, TemporalError> {
+        self.last_step = Step::Idle;
         if self.retiring.as_mut().is_some_and(CameraSession::try_reap) {
-            self.retiring = None;
+            if let Some(done) = self.retiring.take() {
+                self.capture = done.finish().or(self.capture);
+            }
         }
         let mut notice = None;
         if self.source == Source::Camera {
@@ -255,6 +311,7 @@ impl Pipeline {
                     {
                         Ok(()) => {
                             self.camera_frames += 1;
+                            self.last_step = Step::CameraFrame;
                             if !self.announced {
                                 self.announced = true;
                                 notice = camera.summary().map(|text| format!("camera: {text}"));
@@ -270,6 +327,7 @@ impl Pipeline {
             }
         }
         self.sample.update(now_ms, options, reduced_motion)?;
+        self.last_step = Step::SampleUpdate;
         Ok(notice)
     }
 
@@ -278,6 +336,9 @@ impl Pipeline {
     fn fall_back(&mut self, reason: &str) -> String {
         if let Some(camera) = self.camera.take() {
             camera.cancel();
+            // The worker may still publish while it winds down; the final
+            // counters replace this snapshot once it is joined.
+            self.capture = camera.capture_counters().or(self.capture);
             self.retiring = Some(camera);
         }
         self.source = Source::Sample;
@@ -287,8 +348,38 @@ impl Pipeline {
 
     /// Cancels and joins every worker, closing the device.
     fn shutdown(&mut self) {
-        self.camera = None;
-        self.retiring = None;
+        for session in [self.camera.take(), self.retiring.take()]
+            .into_iter()
+            .flatten()
+        {
+            self.capture = session.finish().or(self.capture);
+        }
+    }
+}
+
+/// A source notice and, when measuring, the clock readings around the update.
+type MeasuredUpdate = (Option<String>, Option<(u64, u64)>);
+
+/// Runs one source update. When measuring, returns the clock readings
+/// around it; reading a clock never touches the pipeline.
+fn update_measured(
+    pipeline: &mut Pipeline,
+    recorder: Option<&Recorder>,
+    now_ms: u64,
+    options: TemporalOptions,
+    reduced_motion: bool,
+) -> Result<MeasuredUpdate, TemporalError> {
+    let start = recorder.map(Recorder::now_us);
+    let notice = pipeline.update(now_ms, options, reduced_motion)?;
+    let span = start.zip(recorder.map(Recorder::now_us));
+    Ok((notice, span))
+}
+
+fn fit_label(fit: FitMode) -> &'static str {
+    match fit {
+        FitMode::Cover => "cover",
+        FitMode::Contain => "contain",
+        FitMode::Stretch => "stretch",
     }
 }
 
@@ -303,72 +394,155 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         (320, 240)
     };
-    let sample = Sample::new(width, height)?;
-    let mut window = Window::new(
-        "SpecterMirror - synthetic frame proof",
-        width,
-        height,
-        WindowOptions {
-            resize: true,
-            scale_mode: if options.fit == FitMode::Contain {
-                minifb::ScaleMode::AspectRatioStretch
-            } else {
-                minifb::ScaleMode::Stretch
+    let micros: Option<Arc<dyn MicroClock>> = (options.metrics || options.run_for_ms.is_some())
+        .then(|| Arc::new(MonotonicMicros::new()) as Arc<dyn MicroClock>);
+    let mut recorder = options.metrics.then(|| {
+        Recorder::new(
+            Arc::clone(micros.as_ref().expect("metrics needs a clock")),
+            RunConfig {
+                width,
+                height,
+                fit: fit_label(options.fit),
+                delay_ms: options.temporal.delay_ms,
+                trails: options.temporal.trail_strength,
+                reduced_motion: options.reduced_motion,
+                camera_requested: options.camera.is_some(),
+                run_for_ms: options.run_for_ms,
             },
-            ..WindowOptions::default()
-        },
-    )?;
-    let exit_requested = Rc::new(Cell::new(false));
-    window.set_input_callback(Box::new(ExitKeys(Rc::clone(&exit_requested))));
-    window.set_target_fps(30);
-    let mut presentation = Presentation::new(width, height)?;
-    let clock = Arc::new(MonotonicClock::new());
-    let camera = options.camera.and_then(|index| {
-        match CameraSession::spawn(
-            camera::open_index(index),
-            (width, height),
-            Arc::clone(&clock) as Arc<dyn Clock>,
-        ) {
-            Ok(session) => Some(session),
-            Err(error) => {
-                eprintln!(
-                    "camera: cannot start capture worker ({error}); using the generated sample"
-                );
-                None
-            }
-        }
+        )
     });
-    let mut pipeline = Pipeline::new(sample, camera);
-    let result = (|| -> Result<(), Box<dyn Error>> {
-        while window.is_open() && !exit_requested.get() {
-            let (display_width, display_height) = window.get_size();
-            if display_width == 0 || display_height == 0 {
-                window.update();
-                continue;
+    let mut loop_end = None;
+    let result = (|| -> Result<ExitReason, Box<dyn Error>> {
+        let sample = Sample::new(width, height)?;
+        let mut window = Window::new(
+            "SpecterMirror - synthetic frame proof",
+            width,
+            height,
+            WindowOptions {
+                resize: true,
+                scale_mode: if options.fit == FitMode::Contain {
+                    minifb::ScaleMode::AspectRatioStretch
+                } else {
+                    minifb::ScaleMode::Stretch
+                },
+                ..WindowOptions::default()
+            },
+        )?;
+        let exit_requested = Rc::new(Cell::new(false));
+        window.set_input_callback(Box::new(ExitKeys(Rc::clone(&exit_requested))));
+        window.set_target_fps(30);
+        let mut presentation = Presentation::new(width, height)?;
+        let clock = Arc::new(MonotonicClock::new());
+        let camera = options.camera.and_then(|index| {
+            match CameraSession::spawn(
+                camera::open_index(index),
+                (width, height),
+                Arc::clone(&clock) as Arc<dyn Clock>,
+            ) {
+                Ok(session) => Some(session),
+                Err(error) => {
+                    eprintln!(
+                        "camera: cannot start capture worker ({error}); using the generated sample"
+                    );
+                    None
+                }
             }
-            if let Some(notice) =
-                pipeline.update(clock.now_ms(), options.temporal, options.reduced_motion)?
-            {
-                eprintln!("{notice}");
-            }
-            presentation.update(
-                pipeline.pixels(),
-                display_width,
-                display_height,
-                options.fit,
-            )?;
-            let crop = presentation.crop();
-            window.update_with_buffer(presentation.pixels(), crop.width, crop.height)?;
-            if options.proof {
-                println!("Rendered a synthetic frame through the X11 software window.");
-                break;
-            }
+        });
+        let mut pipeline = Pipeline::new(sample, camera);
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.mark_loop_start();
         }
-        Ok(())
+        // Only a timed run reads a clock for its deadline. It starts after the
+        // loop start mark, so a reported loop is never shorter than requested.
+        let deadline_us = options.run_for_ms.map(|ms| {
+            micros
+                .as_ref()
+                .expect("timed run needs a clock")
+                .now_us()
+                .saturating_add(u64::from(ms) * 1000)
+        });
+        let result = (|| -> Result<ExitReason, Box<dyn Error>> {
+            loop {
+                if !window.is_open() {
+                    return Ok(ExitReason::WindowClosed);
+                }
+                if exit_requested.get() {
+                    return Ok(ExitReason::Escape);
+                }
+                if deadline_us.is_some_and(|deadline| {
+                    micros.as_ref().expect("timed run needs a clock").now_us() >= deadline
+                }) {
+                    return Ok(ExitReason::Timed);
+                }
+                let (display_width, display_height) = window.get_size();
+                if display_width == 0 || display_height == 0 {
+                    window.update();
+                    continue;
+                }
+                let (notice, span) = update_measured(
+                    &mut pipeline,
+                    recorder.as_ref(),
+                    clock.now_ms(),
+                    options.temporal,
+                    options.reduced_motion,
+                )?;
+                presentation.update(
+                    pipeline.pixels(),
+                    display_width,
+                    display_height,
+                    options.fit,
+                )?;
+                let prepare_end = recorder.as_ref().map(Recorder::now_us);
+                let crop = presentation.crop();
+                window.update_with_buffer(presentation.pixels(), crop.width, crop.height)?;
+                if let (Some(recorder), Some((step_start, step_end)), Some(prepare_end)) =
+                    (recorder.as_mut(), span, prepare_end)
+                {
+                    let submit_end = recorder.now_us();
+                    recorder.record(Iteration {
+                        source: pipeline.source_kind(),
+                        step: pipeline.last_step,
+                        step_start_us: step_start,
+                        step_end_us: step_end,
+                        prepare_end_us: prepare_end,
+                        submit_end_us: submit_end,
+                    });
+                }
+                if let Some(notice) = notice {
+                    eprintln!("{notice}");
+                }
+                if options.proof {
+                    println!("Rendered a synthetic frame through the X11 software window.");
+                    return Ok(ExitReason::SelfTest);
+                }
+            }
+        })();
+        loop_end = recorder.as_ref().map(Recorder::now_us);
+        pipeline.shutdown();
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.set_capture(pipeline.capture);
+        }
+        result
     })();
-    // Escape, window close and errors all end here: cancel, join, close.
-    pipeline.shutdown();
-    result
+    let reason = result.as_ref().map_or(ExitReason::Error, |reason| *reason);
+    let report = recorder.as_mut().map(|recorder| {
+        let end = recorder.now_us();
+        let loop_end = loop_end.unwrap_or(end);
+        recorder.finish_startup(loop_end);
+        recorder.report(reason, loop_end, end)
+    });
+    if let Some(report) = report {
+        use std::io::Write as _;
+        let mut stdout = std::io::stdout().lock();
+        if let Err(error) = stdout
+            .write_all(report.as_bytes())
+            .and_then(|()| stdout.flush())
+        {
+            result?;
+            return Err(error.into());
+        }
+    }
+    result.map(|_| ())
 }
 
 #[cfg(test)]
@@ -529,6 +703,48 @@ mod tests {
         }
         assert!(parse_options(args(&["--camera", "/dev/video0\u{0}x"])).is_err());
         assert!(HELP.contains("--camera") && HELP.contains("sample only"));
+    }
+
+    #[test]
+    fn metrics_and_run_for_arguments_are_strict_and_optional() {
+        assert_eq!(parse_options(args(&[])).unwrap(), Options::default());
+        assert!(!Options::default().metrics && Options::default().run_for_ms.is_none());
+        let on = parse_options(args(&["--metrics", "--run-for-ms", "100"])).unwrap();
+        assert!(on.metrics && on.run_for_ms == Some(100));
+        assert_eq!(
+            parse_options(args(&["--run-for-ms", "600000", "--camera", "/dev/video2"]))
+                .unwrap()
+                .run_for_ms,
+            Some(600_000)
+        );
+        for values in [
+            vec!["--metrics", "--metrics"],
+            vec!["--run-for-ms"],
+            vec!["--run-for-ms", "99"],
+            vec!["--run-for-ms", "600001"],
+            vec!["--run-for-ms", "0"],
+            vec!["--run-for-ms", "0100"],
+            vec!["--run-for-ms", "-100"],
+            vec!["--run-for-ms", "+100"],
+            vec!["--run-for-ms", "1e3"],
+            vec!["--run-for-ms", "100.0"],
+            vec!["--run-for-ms", "NaN"],
+            vec!["--run-for-ms", ""],
+            vec!["--run-for-ms", "1000000"],
+            vec!["--run-for-ms", "99999999999999999999"],
+            vec!["--run-for-ms", "100", "--run-for-ms", "100"],
+            vec!["--self-test", "--metrics"],
+            vec!["--metrics", "--self-test"],
+            vec!["--self-test", "--run-for-ms", "100"],
+            vec!["--run-for-ms", "100", "--self-test"],
+            vec!["--metrics", "--help"],
+            vec!["--help", "--metrics"],
+            vec!["--help", "--run-for-ms", "100"],
+            vec!["--run-for-ms", "100", "--help"],
+        ] {
+            assert!(parse_options(args(&values)).is_err(), "{values:?}");
+        }
+        assert!(HELP.contains("--metrics") && HELP.contains("--run-for-ms"));
     }
 
     mod pipeline {
@@ -921,6 +1137,205 @@ mod tests {
                 (rig.log.stops.load(SeqCst), rig.log.dropped.load(SeqCst)),
                 (1, 1)
             );
+        }
+
+        struct Tick(std::sync::atomic::AtomicU64);
+        impl MicroClock for Tick {
+            /// Every reading advances 100 us, so spans are exactly 100 us.
+            fn now_us(&self) -> u64 {
+                self.0.fetch_add(100, SeqCst)
+            }
+        }
+
+        fn recorder(camera: bool) -> Recorder {
+            let mut recorder = Recorder::new(
+                Arc::new(Tick(std::sync::atomic::AtomicU64::new(0))),
+                RunConfig {
+                    width: 16,
+                    height: 12,
+                    fit: "cover",
+                    delay_ms: 0,
+                    trails: 0,
+                    reduced_motion: false,
+                    camera_requested: camera,
+                    run_for_ms: None,
+                },
+            );
+            recorder.mark_loop_start();
+            recorder
+        }
+
+        /// One display iteration as the main loop performs it.
+        fn tick(pipeline: &mut Pipeline, recorder: &mut Recorder, now: u64) {
+            let (_, span) = update_measured(pipeline, Some(recorder), now, CLEAR, false).unwrap();
+            let (start, end) = span.unwrap();
+            let prepare_end = recorder.now_us();
+            let submit_end = recorder.now_us();
+            recorder.record(Iteration {
+                source: pipeline.source_kind(),
+                step: pipeline.last_step,
+                step_start_us: start,
+                step_end_us: end,
+                prepare_end_us: prepare_end,
+                submit_end_us: submit_end,
+            });
+        }
+
+        #[test]
+        fn measurement_does_not_change_sample_pixels_at_both_sizes() {
+            for (w, h) in [(160, 120), (320, 240)] {
+                let options = Options::default().temporal;
+                let mut plain = Pipeline::new(Sample::new(w, h).unwrap(), None);
+                let mut measured = Pipeline::new(Sample::new(w, h).unwrap(), None);
+                let mut rec = recorder(false);
+                for time in [0, 40, 130, 500, 900] {
+                    plain.update(time, options, false).unwrap();
+                    let (_, span) =
+                        update_measured(&mut measured, Some(&rec), time, options, false).unwrap();
+                    assert_eq!(span, Some((span.unwrap().0, span.unwrap().0 + 100)));
+                    assert_eq!(measured.pixels(), plain.pixels());
+                    rec.record(Iteration {
+                        source: measured.source_kind(),
+                        step: measured.last_step,
+                        step_start_us: 0,
+                        step_end_us: 1,
+                        prepare_end_us: 2,
+                        submit_end_us: time,
+                    });
+                }
+                // Without a recorder no span is produced.
+                assert_eq!(
+                    update_measured(&mut plain, None, 1000, options, false)
+                        .unwrap()
+                        .1,
+                    None
+                );
+            }
+        }
+
+        #[test]
+        fn measuring_camera_updates_preserves_pixels() {
+            let plain_rig = rig();
+            let measured_rig = rig();
+            let make_device = |rig: &Rig| {
+                let mut device = rgb24(16, 12, rig);
+                for (time, sequence, color) in [(10, 1, [255, 0, 0]), (20, 2, [0, 0, 255])] {
+                    device
+                        .script
+                        .push_back(data(time, sequence, solid(16, 12, color)));
+                }
+                device
+            };
+            let mut plain = start(make_device(&plain_rig), 16, 12, &plain_rig);
+            let mut measured = start(make_device(&measured_rig), 16, 12, &measured_rig);
+            let mut rec = recorder(true);
+            for time in [10, 20] {
+                deliver(&mut plain, &plain_rig, time, CLEAR, false);
+                let before = measured.camera_frames;
+                measured_rig.gate.fetch_add(1, SeqCst);
+                wait_until(|| {
+                    tick(&mut measured, &mut rec, time);
+                    measured.camera_frames > before
+                });
+                assert_eq!(plain.pixels(), measured.pixels());
+            }
+        }
+
+        #[test]
+        fn idle_display_ticks_never_become_camera_frames() {
+            let rig = rig();
+            let mut device = rgb24(16, 12, &rig);
+            device
+                .script
+                .push_back(data(10, 1, solid(16, 12, [255, 0, 0])));
+            let mut pipeline = start(device, 16, 12, &rig);
+            let mut rec = recorder(true);
+            rig.gate.fetch_add(1, SeqCst);
+            wait_until(|| {
+                tick(&mut pipeline, &mut rec, 10);
+                pipeline.camera_frames == 1
+            });
+            let before = pipeline.camera_frames;
+            for now in 11..21 {
+                tick(&mut pipeline, &mut rec, now);
+                assert_eq!(pipeline.last_step, metrics::Step::Idle);
+            }
+            assert_eq!(pipeline.camera_frames, before);
+            let text = rec.report(ExitReason::Timed, 100_000, 100_100);
+            assert!(text.contains("\"frames\":1,"), "{text}");
+            assert!(text.contains("\"idle_ticks\":10,") || text.contains("\"idle_ticks\":"));
+            assert!(text.contains("\"processing_us\":{\"count\":1,"), "{text}");
+        }
+
+        #[test]
+        fn capture_counters_survive_fallback_and_orderly_shutdown() {
+            // Fallback: stall after two published frames, one unread replaced.
+            let rig = rig();
+            let mut device = rgb24(16, 12, &rig);
+            for (at, sequence) in [(1000, 1), (1001, 2), (1002, 3)] {
+                device
+                    .script
+                    .push_back(data(at, sequence, solid(16, 12, [1, 2, 3])));
+            }
+            let mut pipeline = start(device, 16, 12, &rig);
+            rig.gate.fetch_add(3, SeqCst);
+            wait_until(|| rig.log.waits.load(SeqCst) >= 4);
+            // The first frame also announces the negotiated format.
+            let message = pipeline.update(1002, CLEAR, false).unwrap();
+            assert!(message.unwrap().starts_with("camera: "));
+            assert_eq!(pipeline.camera_frames, 1);
+            assert!(pipeline.update(2400, CLEAR, false).unwrap().is_some());
+            wait_until(|| {
+                pipeline.update(2400, CLEAR, false).unwrap();
+                pipeline.retiring.is_none()
+            });
+            assert!(pipeline.camera.is_none());
+            let counters = pipeline.capture.expect("snapshot kept after release");
+            assert_eq!(counters.published, 3);
+            assert_eq!(counters.overwritten, 2);
+            assert_eq!(counters.stale, 0);
+            // The sample continues and its counts are separate.
+            assert_eq!(pipeline.source_kind(), SourceKind::Sample);
+
+            // Orderly shutdown while streaming keeps the counters too.
+            let rig2 = self::rig();
+            let mut device = rgb24(16, 12, &rig2);
+            device
+                .script
+                .push_back(data(10, 1, solid(16, 12, [9, 9, 9])));
+            let mut live = start(device, 16, 12, &rig2);
+            rig2.gate.fetch_add(1, SeqCst);
+            wait_until(|| {
+                live.update(10, CLEAR, false).unwrap();
+                live.camera_frames == 1
+            });
+            live.shutdown();
+            assert_eq!(live.capture.map(|c| c.published), Some(1));
+            assert_eq!(
+                (rig2.log.stops.load(SeqCst), rig2.log.dropped.load(SeqCst)),
+                (1, 1)
+            );
+        }
+
+        #[test]
+        fn counters_are_unavailable_when_the_camera_never_streamed() {
+            let rig = rig();
+            let mut pipeline = start_with(Box::new(|| Err(CaptureError::Missing)), 16, 12, &rig);
+            let mut rec = recorder(true);
+            wait_until(|| {
+                tick(&mut pipeline, &mut rec, 5);
+                pipeline.source == Source::Sample
+            });
+            wait_until(|| {
+                pipeline.update(5, CLEAR, false).unwrap();
+                pipeline.retiring.is_none()
+            });
+            assert_eq!(pipeline.capture, None);
+            rec.set_capture(pipeline.capture);
+            let text = rec.report(ExitReason::Timed, 100_000, 100_100);
+            assert!(text.contains("\"capture\":null"));
+            assert!(text.contains("\"fallback_occurred\":true"));
+            assert!(text.contains("\"frames\":0,"));
         }
     }
 }

@@ -15,7 +15,7 @@
 use crate::frame::{
     Converter, FrameError, PixelFormat, RawLayout, MAX_HEIGHT, MAX_RAW_BYTES, MAX_WIDTH,
 };
-use crate::latest_frame::{allocate, FrameMeta, LatestFrame, PublishError, Taken};
+use crate::latest_frame::{allocate, Counters, FrameMeta, LatestFrame, PublishError, Taken};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -412,6 +412,27 @@ impl CameraSession {
             self.join();
         }
         self.worker.is_none()
+    }
+
+    /// Numeric capture counters, or `None` before streaming has started.
+    /// Valid after the worker is joined; before that they may still grow.
+    pub fn capture_counters(&self) -> Option<Counters> {
+        if let Some(consumer) = &self.consumer {
+            return Some(consumer.latest.counters());
+        }
+        self.shared
+            .lock()
+            .ready
+            .as_ref()
+            .map(|ready| ready.latest.counters())
+    }
+
+    /// Cancels, joins the worker (closing the device) and returns the final
+    /// counters.
+    pub fn finish(mut self) -> Option<Counters> {
+        self.cancel();
+        self.join();
+        self.capture_counters()
     }
 
     fn join(&mut self) {
