@@ -9,3 +9,5 @@ rust-version.workspace = true
 spook-core = { path = "../spook-core" }
 minifb = { version = "=0.29.0", default-features = false, features = ["x11"] }
 v4l = { version = "=0.14.0", default-features = false, features = ["v4l2"] }
+rustface = { version = "=0.1.7", default-features = false }
+jpeg-decoder = { version = "=0.3.2", default-features = false }

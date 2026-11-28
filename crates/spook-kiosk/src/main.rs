@@ -5,10 +5,15 @@ use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 
+mod artwork;
 mod camera;
+mod face_worker;
 mod frame;
+mod haunting;
+mod idle_display;
 mod latest_frame;
 mod metrics;
+mod presence;
 mod presentation;
 mod sample;
 use camera::{CameraPoll, CameraSession, Clock, MonotonicClock};
@@ -29,6 +34,8 @@ CPU-only X11. Escape exits.\n\
                   sample. RGB24 or YUYV only; falls back to the sample.\n\
   --self-test     Render one frame, then exit (sample only).\n\
   --metrics       Print one JSON measurement report to stdout at exit.\n\
+  --idle-artwork  Green offline slideshow; an explicit --camera enables\n\
+                  face-triggered haunting after more than 2 seconds.\n\
   --run-for-ms N  Exit normally after N ms, 100..600000.\n\
   --delay-ms N    Reflection delay, 0..600 ms (default 250).\n\
   --trails N      Past-frame blend weight, 0..255 (default 115).\n\
@@ -46,7 +53,8 @@ Examples:\n\
   spook-kiosk --metrics --run-for-ms 30000\n\
 The appliance session requests fullscreen. Camera mode is opt-in, needs read/write\n\
 access to the device and has no hardware verification yet. --metrics and\n\
---run-for-ms cannot be combined with --self-test.";
+--run-for-ms cannot be combined with --self-test. --idle-artwork cannot be\n\
+combined with --self-test, --metrics, --delay-ms or --trails.";
 
 #[derive(Debug, PartialEq, Eq)]
 struct Options {
@@ -61,6 +69,7 @@ struct Options {
     metrics: bool,
     /// Timed normal exit after this many milliseconds (100..=600000).
     run_for_ms: Option<u32>,
+    idle_artwork: bool,
 }
 
 impl Default for Options {
@@ -78,6 +87,7 @@ impl Default for Options {
             camera: None,
             metrics: false,
             run_for_ms: None,
+            idle_artwork: false,
         }
     }
 }
@@ -131,6 +141,9 @@ fn parse_options(
                 options.camera = Some(parse_camera(arguments.next())?);
             }
             Some("--metrics") if !options.metrics && !options.help => options.metrics = true,
+            Some("--idle-artwork") if !options.idle_artwork && !options.help => {
+                options.idle_artwork = true
+            }
             Some("--run-for-ms") if options.run_for_ms.is_none() && !options.help => {
                 options.run_for_ms = Some(parse_run_for(arguments.next())?);
             }
@@ -146,6 +159,14 @@ fn parse_options(
                 options.help = true;
             }
             _ => return Err(HELP),
+        }
+    }
+    if options.idle_artwork {
+        if options.proof || options.metrics || delay_seen || trails_seen {
+            return Err(HELP);
+        }
+        if !fit_seen {
+            options.fit = FitMode::Contain;
         }
     }
     if options.proof
@@ -240,6 +261,8 @@ struct Pipeline {
     last_step: Step,
     /// Latest numeric capture snapshot, kept after the session is released.
     capture: Option<Counters>,
+    idle_artwork: bool,
+    camera_time: Option<u64>,
 }
 
 impl Pipeline {
@@ -257,6 +280,8 @@ impl Pipeline {
             camera_frames: 0,
             last_step: Step::Idle,
             capture: None,
+            idle_artwork: false,
+            camera_time: None,
         }
     }
 
@@ -296,6 +321,16 @@ impl Pipeline {
                 CameraPoll::Idle => return Ok(None),
                 CameraPoll::Frame { time_ms } => {
                     let camera = self.camera.as_ref().expect("a frame implies a session");
+                    if self.idle_artwork {
+                        self.camera_time = Some(time_ms);
+                        self.camera_frames += 1;
+                        self.last_step = Step::CameraFrame;
+                        if !self.announced {
+                            self.announced = true;
+                            return Ok(camera.summary().map(|s| format!("camera: {s}")));
+                        }
+                        return Ok(None);
+                    }
                     // Camera motion is live; reduced motion only drops delay and trails.
                     let effective = if reduced_motion {
                         TemporalOptions {
@@ -325,6 +360,9 @@ impl Pipeline {
                 }
                 CameraPoll::Fallback(reason) => notice = Some(self.fall_back(&reason)),
             }
+        }
+        if self.idle_artwork {
+            return Ok(notice);
         }
         self.sample.update(now_ms, options, reduced_motion)?;
         self.last_step = Step::SampleUpdate;
@@ -384,6 +422,12 @@ fn fit_label(fit: FitMode) -> &'static str {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    if std::env::args_os()
+        .skip(1)
+        .eq([std::ffi::OsString::from("--face-worker")])
+    {
+        return face_worker::run();
+    }
     let options = parse_options(std::env::args_os().skip(1))?;
     if options.help {
         println!("{HELP}");
@@ -449,6 +493,33 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
         let mut pipeline = Pipeline::new(sample, camera);
+        pipeline.idle_artwork = options.idle_artwork;
+        let mut idle = if options.idle_artwork {
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .subsec_nanos();
+            Some(idle_display::IdleDisplay::new(
+                width,
+                height,
+                seed,
+                options.reduced_motion,
+            )?)
+        } else {
+            None
+        };
+        let mut locator = if options.idle_artwork && pipeline.camera.is_some() {
+            match face_worker::Locator::new(clock.now_ms()) {
+                Ok(locator) => Some(locator),
+                Err(error) => {
+                    eprintln!("face detector unavailable: {error}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mut head = None;
+        let mut title = "";
         if let Some(recorder) = recorder.as_mut() {
             recorder.mark_loop_start();
         }
@@ -479,15 +550,66 @@ fn main() -> Result<(), Box<dyn Error>> {
                     window.update();
                     continue;
                 }
+                let now = clock.now_ms();
                 let (notice, span) = update_measured(
                     &mut pipeline,
                     recorder.as_ref(),
-                    clock.now_ms(),
+                    now,
                     options.temporal,
                     options.reduced_motion,
                 )?;
+                if let Some(idle) = idle.as_mut() {
+                    let mut observation = None;
+                    if pipeline.source == Source::Camera {
+                        if let Some(worker) = locator.as_mut() {
+                            match worker.poll(now) {
+                                Ok(result) => {
+                                    observation = result;
+                                    if let Some((at, face)) = result {
+                                        head = face.map(|face| (at, face));
+                                    }
+                                }
+                                Err(error) => {
+                                    eprintln!(
+                                        "face detector unavailable: {error}; showing artwork"
+                                    );
+                                    locator = None;
+                                    head = None;
+                                }
+                            }
+                        }
+                    } else {
+                        locator = None;
+                        head = None;
+                    }
+                    let new_frame = if pipeline.last_step == Step::CameraFrame {
+                        pipeline.camera.as_ref().map(|c| c.rgba())
+                    } else {
+                        None
+                    };
+                    if let (Some(worker), Some(frame), Some(at)) =
+                        (locator.as_mut(), new_frame, pipeline.camera_time)
+                    {
+                        worker.offer(frame, width, height, at, now);
+                    }
+                    idle.update(now, new_frame, observation, locator.is_some(), head)?;
+                    let next = if idle.live() {
+                        "SpecterMirror - live haunting - camera active"
+                    } else if locator.is_some() {
+                        "SpecterMirror - artwork - camera active - local face detection"
+                    } else if options.camera.is_some() {
+                        "SpecterMirror - artwork - camera or detector unavailable"
+                    } else {
+                        "SpecterMirror - artwork - camera off"
+                    };
+                    if title != next {
+                        window.set_title(next);
+                        title = next;
+                    }
+                }
                 presentation.update(
-                    pipeline.pixels(),
+                    idle.as_ref()
+                        .map_or_else(|| pipeline.pixels(), |d| d.pixels()),
                     display_width,
                     display_height,
                     options.fit,
@@ -518,6 +640,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         })();
         loop_end = recorder.as_ref().map(Recorder::now_us);
+        drop(locator);
         pipeline.shutdown();
         if let Some(recorder) = recorder.as_mut() {
             recorder.set_capture(pipeline.capture);
@@ -548,6 +671,33 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artwork_flags_are_opt_in_and_reject_misleading_measurement_or_manual_options() {
+        let options = parse_options(args(&["--idle-artwork"])).unwrap();
+        assert!(options.idle_artwork);
+        assert_eq!(options.fit, FitMode::Contain);
+        assert!(parse_options(args(&[
+            "--idle-artwork",
+            "--camera",
+            "/dev/video0",
+            "--run-for-ms",
+            "100"
+        ]))
+        .is_ok());
+        for extra in [
+            vec!["--idle-artwork"],
+            vec!["--self-test"],
+            vec!["--metrics"],
+            vec!["--help"],
+            vec!["--delay-ms", "0"],
+            vec!["--trails", "0"],
+        ] {
+            let mut values = vec!["--idle-artwork"];
+            values.extend(extra);
+            assert!(parse_options(args(&values)).is_err(), "{values:?}");
+        }
+    }
 
     fn args(values: &[&str]) -> Vec<std::ffi::OsString> {
         values.iter().map(std::ffi::OsString::from).collect()
@@ -942,6 +1092,29 @@ mod tests {
                 assert_eq!(pipeline.update(tick, CLEAR, false), Ok(None));
             }
             assert_eq!((pipeline.camera_frames, pipeline.pixels()), (1, &shown[..]));
+        }
+
+        #[test]
+        fn artwork_capture_counts_only_new_frames_and_keeps_manual_history_empty() {
+            let rig = rig();
+            let mut device = rgb24(160, 120, &rig);
+            device
+                .script
+                .push_back(data(10, 1, solid(160, 120, [255, 0, 0])));
+            let mut pipeline = start(device, 160, 120, &rig);
+            pipeline.idle_artwork = true;
+            deliver(&mut pipeline, &rig, 10, CLEAR, false);
+            assert_eq!(pipeline.camera_time, Some(10));
+            assert_eq!(pipeline.camera_frames, 1);
+            assert_eq!(pipeline.last_step, metrics::Step::CameraFrame);
+            assert!(pipeline.pixels().iter().all(|p| *p == 0));
+            for now in 11..30 {
+                pipeline.update(now, CLEAR, false).unwrap();
+                assert_eq!(pipeline.last_step, metrics::Step::Idle);
+            }
+            assert_eq!(pipeline.camera_frames, 1);
+            pipeline.shutdown();
+            assert_eq!(rig.log.dropped.load(SeqCst), 1);
         }
 
         #[test]

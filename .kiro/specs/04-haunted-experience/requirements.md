@@ -24,7 +24,8 @@ claims about features available in the current application.
 
 5. Provide independent delay, ghost trails, ghost/skull apparitions, spectral
    and portrait palettes, localized distortion, frost, vignette and atmospheric
-   messages. Static artwork shall not replace processing of camera frames.
+   messages. During live mirror mode, static artwork shall not replace
+   processing of camera frames. Explicit idle artwork mode is defined below.
 6. Provide Haunt me, named recipes and custom combinations. A recipe shall
    define eligible layers, intensity ceilings, timing ranges and resource
    limits. Preserve the existing three manual processing modes.
@@ -143,3 +144,15 @@ flight, submitted at least 200 ms apart, with 8000 ms initialization and
 timestamp, expire after 500 ms and are never re-stamped. Failure disables only
 localization, with a visible status. Frontal faces can be missed. Accuracy,
 cost and physical alignment on the actual webcam remain unmeasured.
+
+## Native idle artwork
+
+33. An explicit native artwork mode shall cycle bundled, licensed green images
+    offline. With an explicitly selected camera, more than 2 seconds of fresh
+    face observations shall reveal a neutral live opening and the shared
+    haunting progression/director. After 3 seconds without valid face presence,
+    return to artwork. Detection shall not imply identity or gaze. Only live
+    frames reach the bounded local detector; camera/detector failure returns to
+    artwork and releases workers. Preserve manual/default modes and reduced
+    motion. See [the native contract](../../../docs/IDLE_ARTWORK.md). Actual
+    antiX, real-face and laptop acceptance remain open.

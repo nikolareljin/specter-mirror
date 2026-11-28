@@ -25,8 +25,14 @@ the same delay/trail engine, with a 160 x 120 fallback. Opt-in
 `--camera /dev/videoN` feeds V4L2 RGB24 or YUYV frames through that pipeline
 and falls back once to the sample if the camera is missing, unsupported,
 disconnected or stalled. It is unverified on physical hardware, so treat it as
-a development path. Native haunting effects and interaction detection remain
-separate work. Artwork is illustrative.
+a development path. Default native capture uses manual delay/trails; automatic
+face-triggered haunting is opt-in. Branding illustrations are illustrative.
+
+The opt-in native [idle artwork mode](docs/IDLE_ARTWORK.md) displays three bundled
+public-domain works in green. With an explicit camera, sustained face detection
+for more than 2 seconds reveals the haunted live mirror; 3 seconds without a
+face returns to artwork. Native face detection and haunting remain unverified
+on the target laptops.
 
 ```bash
 ./dev --help
@@ -75,9 +81,8 @@ provision the development workstation. Run `./demo --help` for complete examples
 - [Asset provenance](assets/PROVENANCE.md).
 - [Reused components and licenses](docs/DEPENDENCIES.md).
 
-The planned demo destination is https://nikolareljin.github.io/specter-mirror/.
-The Pages workflow publishes verified builds from `main`; deployment must
-succeed before that URL is available. The web source includes a matching
+The browser demo is https://nikolareljin.github.io/specter-mirror/.
+The Pages workflow publishes verified builds from `main`. The web source includes a matching
 About page with links to selected public projects.
 
 ## Next steps
@@ -87,4 +92,5 @@ into a modular Smart Mirror. Halloween is the first filter theme.
 Live processing and physical hardware verification must precede release claims.
 
 Original source and SVG artwork use [Apache-2.0](LICENSE). Third-party notices
-and dependency licenses remain applicable.
+and dependency licenses remain applicable. The bundled museum paintings use
+CC0; see [asset provenance](assets/PROVENANCE.md).

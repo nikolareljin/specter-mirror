@@ -1,0 +1,41 @@
+[
+  {
+    "file": "island.jpg",
+    "object_id": 435683,
+    "title": "Island of the Dead",
+    "artist": "Arnold B\u00f6cklin",
+    "date": "1880",
+    "object_url": "https://www.metmuseum.org/art/collection/search/435683",
+    "image_url": "https://images.metmuseum.org/CRDImages/ep/web-large/DP-47457-001.jpg",
+    "license": "CC0-1.0",
+    "policy": "https://www.metmuseum.org/hubs/open-access",
+    "sha256": "65e3bfeaff511bfca00a6694c3cef5a502a7ea778fe70a96119f0d2dc18013f5",
+    "bytes": 51042
+  },
+  {
+    "file": "monsters.jpg",
+    "object_id": 334453,
+    "title": "Plate 43 from \"Los Caprichos\": The sleep of reason produces monsters (El sue\u00f1o de la razon produce monstruos)",
+    "artist": "Goya (Francisco de Goya y Lucientes)",
+    "date": "1799 (published 1908\u201312)",
+    "object_url": "https://www.metmuseum.org/art/collection/search/334453",
+    "image_url": "https://images.metmuseum.org/CRDImages/dp/web-large/DP816991.jpg",
+    "license": "CC0-1.0",
+    "policy": "https://www.metmuseum.org/hubs/open-access",
+    "sha256": "ca77707dd486b4433c0e17a1a3380291163ed03d3698bea8b14bc4b406c52f97",
+    "bytes": 61520
+  },
+  {
+    "file": "skull.jpg",
+    "object_id": 435904,
+    "title": "Still Life with a Skull and a Writing Quill",
+    "artist": "Pieter Claesz",
+    "date": "1628",
+    "object_url": "https://www.metmuseum.org/art/collection/search/435904",
+    "image_url": "https://images.metmuseum.org/CRDImages/ep/web-large/DP145929.jpg",
+    "license": "CC0-1.0",
+    "policy": "https://www.metmuseum.org/hubs/open-access",
+    "sha256": "9d9123663f03abe140e789319d45d178a8325e715cd1eab8efeb24e63dd2dc37",
+    "bytes": 72063
+  }
+]
