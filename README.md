@@ -53,6 +53,9 @@ The X11 proof needs a display; use `xvfb-run -a ./dev native-proof` in CI.
 Run `./demo native` to keep the animated native sample open until Escape.
 Use the native executable's `--help` for delay, trails, resolution and reduced
 motion controls; [native options](docs/NATIVE_COMPATIBILITY.md) include examples.
+Opt-in `--metrics` and `--run-for-ms N` print bounded timing and counter
+reports; `scripts/native_validation.py` runs them locally. See
+[native validation](docs/NATIVE_VALIDATION.md). No target measurement exists yet.
 Run `./demo web` to preview the interface at
 http://127.0.0.1:5173/specter-mirror/. Use `./demo web --port 5179` if the
 default port is occupied. Install web dependencies with `npm ci --prefix web`
@@ -67,7 +70,7 @@ provision the development workstation. Run `./demo --help` for complete examples
 - [Architecture](docs/ARCHITECTURE.md) and [effects](docs/EFFECTS.md).
 - [i686 build](docs/BUILD_I686.md), [antiX installation](docs/INSTALL_ANTIX.md), [hardware](docs/HARDWARE.md).
 - [WASM build](docs/BUILD_WASM.md), [web interface](docs/WEB_DEMO.md), [privacy](docs/PRIVACY.md).
-- [Virtual machines](vm/README.md), [ISO media](docs/ISO.md), [benchmarks](docs/BENCHMARKS.md), [demo verification](docs/DEMO.md).
+- [Native validation](docs/NATIVE_VALIDATION.md), [virtual machines](vm/README.md), [ISO media](docs/ISO.md), [benchmarks](docs/BENCHMARKS.md), [demo verification](docs/DEMO.md).
 - [Kiro development](docs/KIRO-DEVELOPMENT.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md).
 - [Asset provenance](assets/PROVENANCE.md).
 - [Reused components and licenses](docs/DEPENDENCIES.md).

@@ -8,6 +8,7 @@ __pycache__/
 /web/node_modules/
 /web/dist/
 /hardware-local.txt
+/native-validation-local/
 /web/.preview/
 /dist/
 /vm/local/

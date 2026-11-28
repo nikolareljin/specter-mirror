@@ -176,3 +176,22 @@ library owns additional window buffers; the crop-buffer bound is not a total
 process-memory measurement. Resize tests cover wide, tall, square and narrow
 windows, rejected input and storage reuse. Physical display verification remains
 separate from host tests and the virtual X11 proof.
+
+## Opt-in measurements
+
+`--metrics` prints one versioned JSON report to stdout after the worker is
+joined, and `--run-for-ms N` (100..600000) ends a run through the normal
+cancel, join and close path. Both are rejected with `--self-test`. Without
+them nothing is measured and behavior is unchanged. The report keeps new camera
+frames, sample updates, display submissions and idle display ticks apart.
+Processing time (conversion plus temporal processing of one new source frame)
+is separate from presentation and from display cadence, which is separate from
+the configured 30 FPS. Summaries use fixed histograms (250 us bins to 100 ms
+for durations, 1 ms bins to 500 ms for intervals) with exact count, maximum
+and overflow count, so memory is constant for any run length. Capture
+counters (published, overwritten unread, stale) survive fallback and
+shutdown. Driver drops are not counted and are reported as `null`. A host
+sample run under Xvfb exercised this on the development machine only.
+[Native validation](NATIVE_VALIDATION.md) defines every field, the local runner
+and the operator checklist. No measurement from an antiX guest, physical
+laptop or webcam exists yet.
