@@ -46,7 +46,16 @@ with the original frame time. It widens the face to a head box with integer
 arithmetic, scales it into the unmirrored processing frame and leaves
 mirroring to the engine. `MirrorController` offers frames and reads the latest
 fresh result through optional dependencies, so failures never become mirror
-failures. This is a browser-only backend; native localization is unchanged.
+failures. The browser worker remains browser-only. The opt-in native idle
+artwork adapter uses the same model/settings in a killable local detector
+process with nonblocking sockets, one request, and original capture timestamps.
+Its face gate requires more than 2 seconds of fresh observations before
+starting a new director/progression session. Confirmed face presence keeps a
+still visitor's progression active; the director receives measured motion.
+After 3 seconds without a valid face, return to artwork and reset history.
+Camera/detector failure returns immediately to artwork. See
+[the native contract](../../../docs/IDLE_ARTWORK.md) for bounds and open target
+acceptance. The native adapter does not depend on browser code.
 No identity recognition is required. Frost and vignette are
 cheap spatial treatments with bounded animation; distortion uses integer
 sampling and clamps every source coordinate. Compose into caller-owned buffers.

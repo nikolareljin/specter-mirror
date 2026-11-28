@@ -24,7 +24,8 @@ claims about features available in the current application.
 
 5. Provide independent delay, ghost trails, ghost/skull apparitions, spectral
    and portrait palettes, localized distortion, frost, vignette and atmospheric
-   messages. Static artwork shall not replace processing of camera frames.
+   messages. During live mirror mode, static artwork shall not replace
+   processing of camera frames. Explicit idle artwork mode is defined below.
 6. Provide Haunt me, named recipes and custom combinations. A recipe shall
    define eligible layers, intensity ceilings, timing ranges and resource
    limits. Preserve the existing three manual processing modes.
