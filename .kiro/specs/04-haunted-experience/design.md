@@ -52,7 +52,13 @@ process with nonblocking sockets, one request, and original capture timestamps.
 Its face gate requires more than 2 seconds of fresh observations before
 starting a new director/progression session. Confirmed face presence keeps a
 still visitor's progression active; the director receives measured motion.
-After 3 seconds without a valid face, return to artwork and reset history.
+The idle photo starts in its original colors and shuffles after a 2-minute
+hold with a 5-second crossfade. Shuffle bags contain each image once and avoid
+an immediate repeat across bags. Pause the playlist during the live visit.
+After 3 seconds without a valid face, reset history and fade to the held photo
+in green for 1 second, then restore its original colors over 6 seconds. Use
+bounded integer easing and a reusable transition frame so re-entry preserves
+the visible image. Restart the idle hold after recovery.
 Camera/detector failure returns immediately to artwork. See
 [the native contract](../../../docs/IDLE_ARTWORK.md) for bounds and open target
 acceptance. The native adapter does not depend on browser code.
